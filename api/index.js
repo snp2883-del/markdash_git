@@ -16,10 +16,16 @@ require('dotenv').config();
 const express   = require('express');
 const fetch     = require('node-fetch');
 const cors      = require('cors');
+const path      = require('path');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+
+// Serve static files from public/ directory
+// On Vercel __dirname is /var/task/api — so go up one level
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+app.use(express.static(PUBLIC_DIR));
 
 // ── Credentials: read from env vars only (no file system on Vercel) ──────────
 // Format: CRED__SECTION__KEY  e.g. CRED__YANDEX_METRICA__TOKEN
@@ -554,4 +560,9 @@ app.get('/api/bitrix/sync', async (req, res) => {
 });
 
 // Export for Vercel
+// Catch-all: serve index.html for any non-API route (SPA fallback)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
 module.exports = app;
