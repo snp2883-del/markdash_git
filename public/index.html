@@ -2861,19 +2861,42 @@ const PLATFORMS = {
 function buildApiChannels(){
   const wrap = document.getElementById('apiChannelsList');
 
+  // Detect if running on Vercel (hostname contains vercel.app or custom domain via vercel)
+  const isVercel = window.location.hostname.includes('vercel.app') ||
+                   window.location.hostname.includes('vercel.sh') ||
+                   (HAS_BACKEND && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1');
+
   // Backend status banner
-  const bannerHtml = HAS_BACKEND
-    ? `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(61,206,160,.1);border:1px solid rgba(61,206,160,.25);border-radius:10px;margin-bottom:1.2rem;font-size:13px">
-         <span style="color:#3dcea0;font-size:18px">✓</span>
-         <div><strong style="color:#3dcea0">Бэкенд подключён</strong><br>
-         <span style="color:var(--muted)">Токены хранятся на сервере и никогда не передаются в браузер.</span></div>
-         <button class="btn sm" style="margin-left:auto" onclick="loadHealthStatus()">Статус</button>
-       </div>`
-    : `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);border-radius:10px;margin-bottom:1.2rem;font-size:13px">
-         <span style="color:#f5a623;font-size:18px">⚠</span>
-         <div><strong style="color:#f5a623">Бэкенд не запущен</strong><br>
-         <span style="color:var(--muted)">Откройте файл через <code>node server/index.js</code>, затем зайдите на <code>http://localhost:3000</code></span></div>
-       </div>`;
+  let bannerHtml;
+  if(!HAS_BACKEND){
+    bannerHtml = `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);border-radius:2px;margin-bottom:1.2rem;font-size:13px">
+       <span style="font-size:18px">⚠</span>
+       <div><strong style="color:#f5a623">Бэкенд не запущен</strong><br>
+       <span style="color:var(--muted)">Запустите локально: <code>node server/index.js</code> → <code>http://localhost:3000</code></span></div>
+     </div>`;
+  } else if(isVercel){
+    bannerHtml = `<div style="padding:12px 16px;background:rgba(79,127,255,.08);border:1px solid rgba(79,127,255,.2);border-radius:2px;margin-bottom:1.2rem;font-size:13px">
+       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+         <span style="font-size:16px">☁️</span>
+         <strong>Vercel — токены через Environment Variables</strong>
+         <button class="btn sm" style="margin-left:auto" onclick="loadHealthStatus()">Статус API</button>
+       </div>
+       <div style="color:var(--muted);line-height:1.7">
+         На Vercel токены нельзя сохранить через UI — только через переменные окружения.<br>
+         <strong style="color:var(--text)">Как добавить:</strong> Vercel Dashboard → ваш проект → <strong>Settings → Environment Variables</strong><br>
+         Пример: <code style="background:var(--surface3);padding:1px 6px;border-radius:3px">CRED__YANDEX_DIRECT__TOKEN</code> = ваш_токен<br>
+         После добавления нажмите <strong>Redeploy</strong> в Vercel.<br>
+         <strong style="color:var(--accent2)">Но «Проверить» работает прямо сейчас</strong> — введите токен в поле и нажмите «Проверить», сервер проверит не сохраняя.
+       </div>
+     </div>`;
+  } else {
+    bannerHtml = `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(61,206,160,.1);border:1px solid rgba(61,206,160,.25);border-radius:2px;margin-bottom:1.2rem;font-size:13px">
+       <span style="color:#3dcea0;font-size:18px">✓</span>
+       <div><strong style="color:#3dcea0">Бэкенд подключён (локально)</strong><br>
+       <span style="color:var(--muted)">Токены сохраняются в .credentials.json на сервере.</span></div>
+       <button class="btn sm" style="margin-left:auto" onclick="loadHealthStatus()">Статус</button>
+     </div>`;
+  }
 
   wrap.innerHTML = bannerHtml + Object.entries(PLATFORMS).map(([key, p]) => {
     const fieldRows = p.fields.map(f => {
@@ -2959,32 +2982,33 @@ async function loadHealthStatus(){
 async function savePlatform(key){
   const p = PLATFORMS[key];
   if(!p) return;
-
   const payload = {};
   payload[p.endpoint] = {};
   p.fields.forEach(f => {
-    const val = document.getElementById(`pf_${key}_${f.k}`)?.value.trim();
+    if(f.t==='select') return; // handled separately
+    const val = document.getElementById('pf_'+key+'_'+f.k)?.value.trim();
     if(val) payload[p.endpoint][f.k] = val;
   });
-
-  if(!HAS_BACKEND){
-    showToast('Бэкенд не запущен — токены не сохранены','error'); return;
-  }
-
+  if(!HAS_BACKEND){ showToast('Бэкенд не запущен','error'); return; }
   try{
-    await backendPost('/api/credentials', payload);
-    document.getElementById('pdot_'+key).className = 'status-dot gray';
+    const res = await backendPost('/api/credentials', payload);
+    // Vercel returns {ok:false} — env vars only
+    if(res && res.ok === false){
+      const st = document.getElementById('pconn_'+key);
+      if(st){ st.textContent = '⚠ Vercel: добавьте через Env Vars'; st.className='conn-status err'; }
+      showToast('Vercel: добавьте токен в Settings → Environment Variables','error');
+      return;
+    }
+    const dot = document.getElementById('pdot_'+key);
+    if(dot) dot.className = 'status-dot gray';
     const st = document.getElementById('pconn_'+key);
     if(st){ st.textContent = 'Сохранено'; st.className = 'conn-status'; }
-    showToast(`${p.label}: настройки сохранены на сервере`,'success');
-    // Clear plaintext inputs after save (security)
+    showToast(p.label+': сохранено','success');
     p.fields.filter(f=>f.t==='password').forEach(f=>{
-      const inp = document.getElementById(`pf_${key}_${f.k}`);
+      const inp = document.getElementById('pf_'+key+'_'+f.k);
       if(inp){ inp.value=''; inp.placeholder='••••••••'; }
     });
-  }catch(e){
-    showToast('Ошибка сохранения: '+e.message,'error');
-  }
+  }catch(e){ showToast('Ошибка: '+e.message,'error'); }
 }
 
 async function testPlatform(key){
@@ -2993,26 +3017,36 @@ async function testPlatform(key){
   const dot = document.getElementById('pdot_'+key);
   const st  = document.getElementById('pconn_'+key);
   const pst = document.getElementById('pstatus_'+key);
-
-  if(!HAS_BACKEND){
-    showToast('Бэкенд не запущен','error'); return;
-  }
-
+  if(!HAS_BACKEND){ showToast('Бэкенд не запущен','error'); return; }
   if(st){ st.textContent = 'Проверка…'; st.className = 'conn-status'; }
   if(pst) pst.textContent = '';
 
+  // Collect any token values typed in the fields (for one-time test without saving)
+  const fieldVals = {};
+  if(p.fields){
+    p.fields.forEach(f => {
+      const inp = document.getElementById('pf_'+key+'_'+f.k);
+      if(inp && inp.value.trim()) fieldVals[f.k] = inp.value.trim();
+    });
+  }
+
   try{
-    const res = await backendGet(`/api/test/${p.endpoint}`);
+    // Pass field values as query params so server can use them for testing
+    // even if they haven't been saved to env vars yet
+    const qs = Object.keys(fieldVals).length
+      ? '?'+new URLSearchParams(fieldVals).toString()
+      : '';
+    const res = await backendGet('/api/test/'+p.endpoint+qs);
     if(res.ok){
       if(dot) dot.className = 'status-dot green';
       if(st){ st.textContent = '✓ Подключено'; st.className = 'conn-status ok'; }
-      if(pst){ pst.textContent = res.hint || ''; pst.style.color = 'var(--accent2)'; }
-      showToast(`${p.label}: ${res.hint || 'подключение успешно'}`,'success');
+      if(pst){ pst.textContent = res.hint||''; pst.style.color='var(--accent2)'; }
+      showToast(p.label+': '+(res.hint||'подключение успешно'),'success');
     } else {
       if(dot) dot.className = 'status-dot red';
       if(st){ st.textContent = '✗ Ошибка'; st.className = 'conn-status err'; }
-      if(pst){ pst.textContent = res.error || 'Ошибка подключения'; pst.style.color = 'var(--accent3)'; }
-      showToast(`${p.label}: ${res.error}`,'error');
+      if(pst){ pst.textContent = res.error||'Ошибка'; pst.style.color='var(--accent3)'; }
+      showToast(p.label+': '+(res.error||'ошибка'),'error');
     }
   }catch(e){
     if(dot) dot.className = 'status-dot red';

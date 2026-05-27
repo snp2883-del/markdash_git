@@ -200,13 +200,43 @@ app.post('/api/credentials', (req, res) => {
 
 // Test connection
 app.get('/api/test/:platform', async (req, res) => {
-  const c = getCreds();
-  const p = req.params.platform;
+  const env = getCreds();
+  const p   = req.params.platform;
+  const q   = req.query; // field values passed from UI input fields
+
+  // Merge: query params override env vars so user can test before saving to Vercel Env Vars
+  const c = {
+    yandex_metrica: {
+      token:      q.token      || env.yandex_metrica.token,
+      counter_id: q.counter_id || env.yandex_metrica.counter_id,
+    },
+    yandex_direct: {
+      token: q.token || env.yandex_direct.token,
+      login: q.login || env.yandex_direct.login,
+    },
+    google: {
+      client_id:       q.client_id       || env.google.client_id,
+      client_secret:   q.client_secret   || env.google.client_secret,
+      refresh_token:   q.refresh_token   || env.google.refresh_token,
+      ga4_property_id: q.ga4_property_id || env.google.ga4_property_id,
+      ads_dev_token:   q.ads_dev_token   || env.google.ads_dev_token,
+      ads_customer_id: q.ads_customer_id || env.google.ads_customer_id,
+    },
+    linkedin: {
+      access_token: q.access_token || env.linkedin.access_token,
+      account_id:   q.account_id   || env.linkedin.account_id,
+    },
+    bitrix24: {
+      webhook: q.webhook || env.bitrix24.webhook,
+      portal:  q.portal  || env.bitrix24.portal,
+    },
+  };
+
   try {
     switch (p) {
       case 'yandex_metrica': {
         if (!c.yandex_metrica.token || !c.yandex_metrica.counter_id)
-          return res.json({ ok: false, error: 'Env vars не заданы: CRED__YANDEX_METRICA__TOKEN и CRED__YANDEX_METRICA__COUNTER_ID' });
+          return res.json({ ok: false, error: 'Заполните Token и ID счётчика, затем нажмите «Проверить»' });
         const r = await fetch(
           `https://api-metrika.yandex.net/stat/v1/data?ids=${c.yandex_metrica.counter_id}&metrics=ym:s:visits&date1=yesterday&date2=yesterday&limit=1`,
           { headers: { Authorization: `OAuth ${c.yandex_metrica.token}` } }
@@ -217,9 +247,9 @@ app.get('/api/test/:platform', async (req, res) => {
       }
       case 'yandex_direct': {
         if (!c.yandex_direct.token)
-          return res.json({ ok: false, error: 'Env var не задан: CRED__YANDEX_DIRECT__TOKEN' });
+          return res.json({ ok: false, error: 'Заполните поле OAuth Token, затем нажмите «Проверить»' });
         const headers = {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           Authorization: `Bearer ${c.yandex_direct.token}`,
           'Accept-Language': 'ru',
         };
@@ -230,11 +260,11 @@ app.get('/api/test/:platform', async (req, res) => {
         });
         const d = await r.json();
         if (d.error) return res.json({ ok: false, error: d.error.error_detail || d.error.error_string });
-        return res.json({ ok: true, hint: `Direct API: кампаний ${d.result?.Campaigns?.length ?? 0}` });
+        return res.json({ ok: true, hint: `Yandex.Direct: доступ подтверждён (кампаний: ${d.result?.Campaigns?.length ?? 0})` });
       }
       case 'google': {
         if (!c.google.client_id || !c.google.refresh_token)
-          return res.json({ ok: false, error: 'Env vars не заданы: CRED__GOOGLE__CLIENT_ID, CRED__GOOGLE__CLIENT_SECRET, CRED__GOOGLE__REFRESH_TOKEN' });
+          return res.json({ ok: false, error: 'Заполните Client ID, Client Secret и Refresh Token' });
         const token = await getGoogleAccessToken(c);
         if (c.google.ga4_property_id) {
           const r = await fetch(
@@ -246,11 +276,11 @@ app.get('/api/test/:platform', async (req, res) => {
           if (!r.ok) return res.json({ ok: false, error: d.error?.message });
           return res.json({ ok: true, hint: `GA4: сессий вчера — ${d.rows?.[0]?.metricValues?.[0]?.value || 0}` });
         }
-        return res.json({ ok: true, hint: 'Google OAuth OK' });
+        return res.json({ ok: true, hint: 'Google OAuth токен получен успешно' });
       }
       case 'linkedin': {
         if (!c.linkedin.access_token)
-          return res.json({ ok: false, error: 'Env var не задан: CRED__LINKEDIN__ACCESS_TOKEN' });
+          return res.json({ ok: false, error: 'Заполните Access Token' });
         const r = await fetch('https://api.linkedin.com/v2/adAccountsV2?q=search&count=1', {
           headers: { Authorization: `Bearer ${c.linkedin.access_token}`, 'LinkedIn-Version': '202401' }
         });
@@ -260,7 +290,7 @@ app.get('/api/test/:platform', async (req, res) => {
       }
       case 'bitrix24': {
         if (!c.bitrix24.webhook)
-          return res.json({ ok: false, error: 'Env var не задан: CRED__BITRIX24__WEBHOOK' });
+          return res.json({ ok: false, error: 'Заполните Webhook URL' });
         const result = await b24call(c.bitrix24.webhook, 'profile');
         return res.json({ ok: true, hint: `Подключён как: ${result.NAME || ''} ${result.LAST_NAME || ''}`.trim() });
       }
