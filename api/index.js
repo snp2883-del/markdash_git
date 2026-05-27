@@ -157,7 +157,6 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     mode:   'vercel-serverless',
-    note:   'Credentials via environment variables only',
     configured: {
       yandex_metrica:   !!(c.yandex_metrica.token && c.yandex_metrica.counter_id),
       yandex_direct:    !!c.yandex_direct.token,
@@ -168,6 +167,49 @@ app.get('/api/health', (req, res) => {
     },
     uptime: Math.round(process.uptime()),
   });
+});
+
+// ── Debug: raw Yandex.Direct response (shows exact error text) ────────────────
+app.get('/api/debug/direct', async (req, res) => {
+  const c = getCreds();
+  if (!c.yandex_direct.token)
+    return res.json({ error: 'no token', env_var: 'CRED__YANDEX_DIRECT__TOKEN' });
+
+  const tokenPreview = c.yandex_direct.token.slice(0, 8) + '…';
+
+  // Test 1: profile check
+  try {
+    const r1 = await fetch('https://login.yandex.ru/info?format=json', {
+      headers: { Authorization: `OAuth ${c.yandex_direct.token}` }
+    });
+    const profile = await r1.json();
+
+    // Test 2: Direct campaigns
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8',
+      Authorization:  `Bearer ${c.yandex_direct.token}`,
+      'Accept-Language': 'ru',
+    };
+    if (c.yandex_direct.login) headers['Client-Login'] = c.yandex_direct.login;
+
+    const r2 = await fetch('https://api.direct.yandex.com/json/v5/campaigns', {
+      method: 'POST', headers,
+      body: JSON.stringify({ method:'get', params:{ SelectionCriteria:{}, FieldNames:['Id','Name'], Page:{ Limit:1 } } })
+    });
+    const campText = await r2.text();
+    let campData;
+    try { campData = JSON.parse(campText); } catch { campData = campText; }
+
+    res.json({
+      token_preview: tokenPreview,
+      token_type: profile.login ? 'valid_yandex_token' : 'unknown',
+      yandex_login: profile.login || profile.error || 'unknown',
+      direct_http_status: r2.status,
+      direct_response: campData,
+    });
+  } catch(e) {
+    res.json({ token_preview: tokenPreview, error: e.message });
+  }
 });
 
 // Credentials — GET returns masked, POST is no-op on Vercel (env vars are immutable at runtime)
