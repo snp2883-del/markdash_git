@@ -341,23 +341,47 @@ app.get('/api/data/yandex-metrica', async (req, res) => {
 app.get('/api/data/yandex-direct', async (req, res) => {
   const c = getCreds();
   const { from, to } = parseDateParam(req);
-  if (!c.yandex_direct.token) return res.status(400).json({ error: 'Yandex.Direct: токен не задан (CRED__YANDEX_DIRECT__TOKEN)' });
+  if (!c.yandex_direct.token)
+    return res.status(400).json({ error: 'Yandex.Direct: токен не задан (CRED__YANDEX_DIRECT__TOKEN)' });
+
   try {
-    const headers = {
-      'Content-Type': 'application/json; charset=utf-8',
-      Authorization:  `Bearer ${c.yandex_direct.token}`,
+    // Step 1: validate token via campaigns API (JSON, easy to parse errors)
+    const authHeaders = {
+      'Content-Type':    'application/json; charset=utf-8',
+      'Authorization':   `Bearer ${c.yandex_direct.token}`,
       'Accept-Language': 'ru',
+    };
+    if (c.yandex_direct.login) authHeaders['Client-Login'] = c.yandex_direct.login;
+
+    const authCheck = await fetch('https://api.direct.yandex.com/json/v5/campaigns', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        method: 'get',
+        params: { SelectionCriteria: {}, FieldNames: ['Id', 'Name'], Page: { Limit: 1 } }
+      }),
+    });
+    const authData = await authCheck.json();
+    if (authData.error) {
+      const msg = authData.error.error_detail || authData.error.error_string || JSON.stringify(authData.error);
+      return res.status(400).json({ error: `Yandex.Direct: ${msg}` });
+    }
+
+    // Step 2: fetch stats report (TSV format)
+    const reportHeaders = {
+      'Authorization':    `Bearer ${c.yandex_direct.token}`,
+      'Accept-Language':  'ru',
       'skipReportHeader': 'true',
       'skipColumnHeader': 'false',
       'skipReportSummary': 'true',
       'returnMoneyInMicros': 'true',
     };
-    if (c.yandex_direct.login) headers['Client-Login'] = c.yandex_direct.login;
+    if (c.yandex_direct.login) reportHeaders['Client-Login'] = c.yandex_direct.login;
 
-    const body = JSON.stringify({
+    const reportBody = JSON.stringify({
       params: {
         SelectionCriteria: { DateFrom: from, DateTo: to },
-        FieldNames: ['CampaignName','Impressions','Clicks','Cost','Conversions'],
+        FieldNames: ['CampaignName', 'Impressions', 'Clicks', 'Cost', 'Conversions'],
         ReportType: 'CAMPAIGN_PERFORMANCE_REPORT',
         DateRangeType: 'CUSTOM_DATE',
         Format: 'TSV',
@@ -367,31 +391,37 @@ app.get('/api/data/yandex-direct', async (req, res) => {
     });
 
     const r = await fetch('https://api.direct.yandex.com/json/v5/reports', {
-      method: 'POST', headers, body,
+      method: 'POST',
+      headers: reportHeaders,
+      body: reportBody,
     });
 
-    // Direct Reports API returns 200 with TSV data, or 400/401/403 with JSON error
+    // 200 = report ready, 201/202 = queued (retry needed), 4xx = error
+    if (r.status === 201 || r.status === 202) {
+      return res.status(202).json({ error: 'Отчёт формируется, попробуйте через 10–30 секунд' });
+    }
+
     if (!r.ok) {
+      const errText = await r.text();
       let errMsg = `HTTP ${r.status}`;
-      try {
-        const errData = await r.json();
-        errMsg = errData.error?.error_detail || errData.error?.error_string || errMsg;
-      } catch { errMsg = await r.text().then(t => t.slice(0, 200)) || errMsg; }
-      return res.status(400).json({ error: `Yandex.Direct: ${errMsg}` });
+      try { errMsg = JSON.parse(errText)?.error?.error_detail || errMsg; } catch {}
+      if (!errMsg || errMsg === `HTTP ${r.status}`) errMsg = errText.slice(0, 300);
+      return res.status(400).json({ error: `Yandex.Direct отчёт: ${errMsg}` });
     }
 
     const tsv = await r.text();
-    const lines = tsv.trim().split('\n');
-    // First line is header: CampaignName\tImpressions\tClicks\tCost\tConversions
-    const header = lines[0]?.split('\t') || [];
-    const rows = lines.slice(1).filter(l => l.trim()).map(line => {
+    const lines = tsv.trim().split('\n').filter(l => l.trim());
+    if (!lines.length) return res.json({ rows: [], source: 'yandex_direct', from, to, total: 0 });
+
+    const header = lines[0].split('\t');
+    const rows = lines.slice(1).map(line => {
       const cols = line.split('\t');
       const get  = key => cols[header.indexOf(key)] || '0';
       const leads = Math.round(+get('Conversions') || 0);
       const spend = Math.round((+get('Cost') || 0) / 1_000_000);
       return {
         date: from, channel: 'Paid Search',
-        campaign: get('CampaignName') || '',
+        campaign:    get('CampaignName') || '',
         sessions:    Math.round(+get('Clicks') || 0),
         pageviews:   0, bounceRate: 0,
         conversions: leads, leads, spend,
@@ -399,7 +429,9 @@ app.get('/api/data/yandex-direct', async (req, res) => {
         source: 'yandex_direct',
       };
     });
+
     res.json({ rows, source: 'yandex_direct', from, to, total: rows.length });
+
   } catch (err) {
     res.status(500).json({ error: `Yandex.Direct: ${err.message}` });
   }
