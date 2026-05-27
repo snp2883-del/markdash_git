@@ -3059,38 +3059,48 @@ async function fetchPlatformData(key){
   const p = PLATFORMS[key];
   if(!p || !HAS_BACKEND){ showToast('Бэкенд не запущен','error'); return; }
 
-  const from = document.getElementById('dpFrom')?.value || '';
-  const to   = document.getElementById('dpTo')?.value   || '';
-  const qs   = from && to ? `?from=${from}&to=${to}` : `?days=${drDays}`;
+  // Build date range query string — use drFrom/drTo if set, else days
+  const qs = (drFrom && drTo) ? `?from=${drFrom}&to=${drTo}` : `?days=${drDays||30}`;
 
   const endpoints = p.dataEndpoints || (p.dataEndpoint ? [p.dataEndpoint] : []);
   if(!endpoints.length) return;
 
-  showToast(`Загрузка данных: ${p.label}…`,'success');
   const pst = document.getElementById('pstatus_'+key);
   if(pst) pst.textContent = 'Загрузка…';
+  showToast(`Загрузка: ${p.label}…`, 'success');
 
   try{
-    const results = await Promise.all(endpoints.map(ep => backendGet(ep+qs)));
+    const results = await Promise.all(endpoints.map(async ep => {
+      const r = await fetch(ep + qs);
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch(e) { throw new Error(`Сервер вернул не JSON: ${text.slice(0,120)}`); }
+      if(data.error) throw new Error(data.error);
+      return data;
+    }));
+
     let newRows = [];
     results.forEach(r => { if(r.rows) newRows = newRows.concat(r.rows); });
 
     if(!newRows.length){
-      showToast(`${p.label}: данных нет за выбранный период`,'error');
-      if(pst) pst.textContent = 'Нет данных';
+      if(pst){ pst.textContent = 'Нет данных за период'; pst.style.color='var(--muted)'; }
+      showToast(`${p.label}: данных нет за выбранный период`, 'error');
       return;
     }
 
-    // Merge with existing data (replace rows from same source)
-    const source = p.endpoint;
-    rawData = rawData.filter(r => r.source !== source).concat(newRows);
+    // Merge: replace rows from same source, keep others
+    const srcKey = results[0]?.source || p.endpoint;
+    rawData = rawData.filter(r => r.source !== srcKey).concat(newRows);
     renderAll(); renderSources(); renderLeads();
 
-    if(pst){ pst.textContent = `Загружено ${newRows.length} строк`; pst.style.color='var(--accent2)'; }
-    showToast(`${p.label}: загружено ${newRows.length} строк`,'success');
+    if(pst){ pst.textContent = `✓ Загружено ${newRows.length} строк`; pst.style.color='var(--accent2)'; }
+    showToast(`${p.label}: загружено ${newRows.length} строк`, 'success');
+
   }catch(e){
-    if(pst) pst.textContent = 'Ошибка загрузки';
-    showToast(`Ошибка: ${e.message}`,'error');
+    if(pst){ pst.textContent = '✗ ' + e.message; pst.style.color='var(--accent3)'; }
+    showToast(`${p.label}: ${e.message}`, 'error');
+    console.error(`fetchPlatformData(${key}):`, e);
   }
 }
 

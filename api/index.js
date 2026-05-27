@@ -305,59 +305,104 @@ app.get('/api/test/:platform', async (req, res) => {
 app.get('/api/data/yandex-metrica', async (req, res) => {
   const c = getCreds();
   const { from, to } = parseDateParam(req);
-  if (!c.yandex_metrica.token) return res.status(400).json({ error: 'Yandex.Metrica не настроен' });
+  if (!c.yandex_metrica.token)
+    return res.status(400).json({ error: 'Yandex.Metrica: токен не задан (CRED__YANDEX_METRICA__TOKEN)' });
+  if (!c.yandex_metrica.counter_id)
+    return res.status(400).json({ error: 'Yandex.Metrica: не задан ID счётчика (CRED__YANDEX_METRICA__COUNTER_ID)' });
   try {
     const url = new URL('https://api-metrika.yandex.net/stat/v1/data');
-    url.searchParams.set('ids', c.yandex_metrica.counter_id);
-    url.searchParams.set('metrics', 'ym:s:visits,ym:s:pageviews,ym:s:bounceRate');
+    url.searchParams.set('ids',        c.yandex_metrica.counter_id);
+    url.searchParams.set('metrics',    'ym:s:visits,ym:s:pageviews,ym:s:bounceRate');
     url.searchParams.set('dimensions', 'ym:s:date,ym:s:trafficSource');
-    url.searchParams.set('date1', from); url.searchParams.set('date2', to);
-    url.searchParams.set('limit', 1000); url.searchParams.set('sort', 'ym:s:date');
-    const r = await fetch(url.toString(), { headers: { Authorization: `OAuth ${c.yandex_metrica.token}` } });
+    url.searchParams.set('date1',      from);
+    url.searchParams.set('date2',      to);
+    url.searchParams.set('limit',      1000);
+    url.searchParams.set('sort',       'ym:s:date');
+    const r = await fetch(url.toString(), {
+      headers: { Authorization: `OAuth ${c.yandex_metrica.token}` }
+    });
     const d = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: d.message });
+    if (!r.ok) return res.status(r.status).json({ error: `Metrica ${r.status}: ${d.message || d.error_type || JSON.stringify(d).slice(0,200)}` });
     const rows = (d.data || []).map(item => ({
-      date: item.dimensions[0]?.name || '',
-      channel: mapMetricaSource(item.dimensions[1]?.name || 'direct'),
-      sessions: Math.round(item.metrics[0] || 0),
-      pageviews: Math.round(item.metrics[1] || 0),
-      bounceRate: +(item.metrics[2] || 0).toFixed(1),
+      date:        item.dimensions[0]?.name || '',
+      channel:     mapMetricaSource(item.dimensions[1]?.name || 'direct'),
+      sessions:    Math.round(item.metrics[0] || 0),
+      pageviews:   Math.round(item.metrics[1] || 0),
+      bounceRate:  +(item.metrics[2] || 0).toFixed(1),
       conversions: 0, leads: 0, spend: 0, source: 'yandex_metrica',
     }));
     res.json({ rows, source: 'yandex_metrica', from, to, total: rows.length });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: `Yandex.Metrica: ${err.message}` });
+  }
 });
 
 // ── Data: Yandex.Direct ───────────────────────────────────────────────────────
 app.get('/api/data/yandex-direct', async (req, res) => {
   const c = getCreds();
   const { from, to } = parseDateParam(req);
-  if (!c.yandex_direct.token) return res.status(400).json({ error: 'Yandex.Direct не настроен' });
+  if (!c.yandex_direct.token) return res.status(400).json({ error: 'Yandex.Direct: токен не задан (CRED__YANDEX_DIRECT__TOKEN)' });
   try {
     const headers = {
       'Content-Type': 'application/json; charset=utf-8',
-      Authorization: `Bearer ${c.yandex_direct.token}`,
+      Authorization:  `Bearer ${c.yandex_direct.token}`,
       'Accept-Language': 'ru',
+      'skipReportHeader': 'true',
+      'skipColumnHeader': 'false',
+      'skipReportSummary': 'true',
+      'returnMoneyInMicros': 'true',
     };
     if (c.yandex_direct.login) headers['Client-Login'] = c.yandex_direct.login;
-    const body = { method: 'get', params: {
-      SelectionCriteria: { DateFrom: from, DateTo: to },
-      FieldNames: ['CampaignId','CampaignName','Impressions','Clicks','Ctr','Cost','Conversions','CostPerConversion'],
-      ReportType: 'CAMPAIGN_PERFORMANCE_REPORT', DateRangeType: 'CUSTOM_DATE',
-      IncludeVAT: 'YES', IncludeDiscount: 'NO',
-    }};
-    const r = await fetch('https://api.direct.yandex.com/json/v5/reports', { method: 'POST', headers, body: JSON.stringify(body) });
-    const d = await r.json();
-    if (d.error) return res.status(400).json({ error: d.error.error_detail || d.error.error_string });
-    const rows = (d.result?.Report?.data || []).map(row => ({
-      date: from, channel: 'Paid Search', campaign: row.CampaignName || '',
-      sessions: Math.round(row.Clicks || 0), pageviews: 0, bounceRate: 0,
-      conversions: Math.round(row.Conversions || 0), leads: Math.round(row.Conversions || 0),
-      spend: Math.round((row.Cost || 0) / 1000000), impressions: Math.round(row.Impressions || 0),
-      source: 'yandex_direct',
-    }));
+
+    const body = JSON.stringify({
+      params: {
+        SelectionCriteria: { DateFrom: from, DateTo: to },
+        FieldNames: ['CampaignName','Impressions','Clicks','Cost','Conversions'],
+        ReportType: 'CAMPAIGN_PERFORMANCE_REPORT',
+        DateRangeType: 'CUSTOM_DATE',
+        Format: 'TSV',
+        IncludeVAT: 'NO',
+        IncludeDiscount: 'NO',
+      }
+    });
+
+    const r = await fetch('https://api.direct.yandex.com/json/v5/reports', {
+      method: 'POST', headers, body,
+    });
+
+    // Direct Reports API returns 200 with TSV data, or 400/401/403 with JSON error
+    if (!r.ok) {
+      let errMsg = `HTTP ${r.status}`;
+      try {
+        const errData = await r.json();
+        errMsg = errData.error?.error_detail || errData.error?.error_string || errMsg;
+      } catch { errMsg = await r.text().then(t => t.slice(0, 200)) || errMsg; }
+      return res.status(400).json({ error: `Yandex.Direct: ${errMsg}` });
+    }
+
+    const tsv = await r.text();
+    const lines = tsv.trim().split('\n');
+    // First line is header: CampaignName\tImpressions\tClicks\tCost\tConversions
+    const header = lines[0]?.split('\t') || [];
+    const rows = lines.slice(1).filter(l => l.trim()).map(line => {
+      const cols = line.split('\t');
+      const get  = key => cols[header.indexOf(key)] || '0';
+      const leads = Math.round(+get('Conversions') || 0);
+      const spend = Math.round((+get('Cost') || 0) / 1_000_000);
+      return {
+        date: from, channel: 'Paid Search',
+        campaign: get('CampaignName') || '',
+        sessions:    Math.round(+get('Clicks') || 0),
+        pageviews:   0, bounceRate: 0,
+        conversions: leads, leads, spend,
+        impressions: Math.round(+get('Impressions') || 0),
+        source: 'yandex_direct',
+      };
+    });
     res.json({ rows, source: 'yandex_direct', from, to, total: rows.length });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: `Yandex.Direct: ${err.message}` });
+  }
 });
 
 // ── Data: Google Analytics 4 ──────────────────────────────────────────────────
