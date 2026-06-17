@@ -575,6 +575,70 @@ table.dt{width:100%;border-collapse:collapse;font-size:13px}
 .b24-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;font-size:10px;
   border-radius:12px;background:rgba(224,74,31,.12);color:#e04a1f;font-weight:500;vertical-align:middle;margin-left:6px}
 
+
+/* ══ MEDIAPLAN ════════════════════════════════════════ */
+.mp-project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+.mp-project-card{background:var(--surface);border:1px solid var(--border);border-radius:2px;
+  padding:1rem;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.mp-project-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.mp-project-card.active{border-color:var(--accent);background:rgba(200,16,46,.05)}
+.mp-project-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--pc,var(--accent))}
+.mp-proj-name{font-family:var(--fh);font-size:14px;font-weight:700;margin-bottom:6px;letter-spacing:.02em}
+.mp-proj-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}
+.mp-proj-stat{font-size:11px;color:var(--muted)}
+.mp-proj-stat span{display:block;font-size:15px;font-weight:600;color:var(--text);font-family:var(--fh)}
+.mp-proj-progress{margin-top:8px;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden}
+.mp-proj-fill{height:100%;background:var(--pc,var(--accent));border-radius:2px;transition:width .4s}
+.mp-proj-badge{display:inline-block;font-size:9px;padding:2px 6px;border-radius:2px;
+  background:var(--pc,var(--accent));opacity:.15;color:var(--text);margin-left:6px;vertical-align:middle}
+
+.mp-pva-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.mp-pva{background:var(--surface);border:1px solid var(--border);border-radius:2px;padding:.85rem 1rem;position:relative}
+.mp-pva-label{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.mp-pva-vals{display:flex;align-items:baseline;gap:6px}
+.mp-pva-fact{font-family:var(--fh);font-size:20px;font-weight:700}
+.mp-pva-plan{font-size:12px;color:var(--muted)}
+.mp-pva-pct{font-size:11px;padding:2px 7px;border-radius:2px}
+.mp-pva-pct.over{background:rgba(61,206,160,.12);color:#3dcea0}
+.mp-pva-pct.under{background:rgba(255,107,74,.1);color:#ff6b4a}
+.mp-pva-bar{height:3px;background:var(--surface3);border-radius:2px;margin-top:6px;overflow:hidden}
+.mp-pva-bar-fill{height:100%;border-radius:2px;transition:width .5s}
+
+/* table */
+.mp-platform-tag{font-size:11px;font-weight:500;padding:2px 8px;border-radius:2px;display:inline-block}
+.mp-budget-bar{display:flex;align-items:center;gap:6px;min-width:120px}
+.mp-budget-bar .barbg{flex:1}.mp-budget-bar .barfg{transition:width .4s}
+.mp-pct-chip{font-size:10px;padding:2px 6px;border-radius:2px;font-weight:600;white-space:nowrap}
+.mp-pct-chip.ok{background:rgba(61,206,160,.12);color:#3dcea0}
+.mp-pct-chip.warn{background:rgba(245,166,35,.12);color:#f0a500}
+.mp-pct-chip.over{background:rgba(200,16,46,.12);color:#c8102e}
+
+/* gantt */
+.gantt-wrap{overflow-x:auto;padding-bottom:8px}
+.gantt-grid{display:grid;gap:0}
+.gantt-row{display:flex;align-items:center;border-bottom:1px solid var(--border);min-height:38px}
+.gantt-row:last-child{border-bottom:none}
+.gantt-row-label{width:220px;flex-shrink:0;padding:0 12px;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.gantt-row-label strong{display:block;font-size:11px}
+.gantt-row-label span{font-size:10px;color:var(--muted)}
+.gantt-timeline{flex:1;position:relative;height:38px;min-width:600px}
+.gantt-bar{position:absolute;height:20px;top:9px;border-radius:2px;
+  display:flex;align-items:center;padding:0 6px;font-size:10px;font-weight:500;
+  color:#fff;white-space:nowrap;overflow:hidden;cursor:pointer;transition:opacity .15s}
+.gantt-bar:hover{opacity:.85}
+.gantt-header{display:flex;border-bottom:1px solid var(--border);margin-bottom:0}
+.gantt-header-label{width:220px;flex-shrink:0;padding:6px 12px;font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.05em;text-transform:uppercase}
+.gantt-months{flex:1;display:flex;min-width:600px}
+.gantt-month{flex:1;text-align:center;font-size:10px;color:var(--muted);padding:6px 0;
+  border-left:1px solid var(--border)}
+.gantt-today-line{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);opacity:.5;pointer-events:none}
+.gantt-grid-line{position:absolute;top:0;bottom:0;width:1px;background:var(--border);pointer-events:none}
+
+@media(max-width:900px){
+  .mp-project-grid{grid-template-columns:1fr 1fr}
+  .mp-pva-row{grid-template-columns:1fr 1fr}
+}
+
 /* ══ LEADS TABLE ══════════════════════════════════════ */
 .lt-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .lt-search-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:200px}
@@ -1007,6 +1071,10 @@ input:focus,select:focus,textarea:focus{
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       Кампании
     </div>
+    <div class="nitem" data-page="mediaplan" onclick="navTo('mediaplan',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="18"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="16" y1="14" x2="16" y2="18"/></svg>
+      Медиаплан
+    </div>
     <div class="nlabel" style="margin-top:.8rem">Управление</div>
     <div class="nitem" data-page="settings" onclick="navTo('settings',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1317,6 +1385,224 @@ input:focus,select:focus,textarea:focus{
       </div>
     </div>
 
+
+    <!-- ── MEDIAPLAN PAGE ── -->
+    <div class="page" id="pg-mediaplan">
+      <div class="topbar">
+        <div class="topbar-l">
+          <h1>Медиаплан</h1>
+          <p id="mpSubtitle">Загрузка…</p>
+        </div>
+        <div class="topbar-r">
+          <button class="btn" id="mpSheetsBtn" onclick="mpSyncSheets()" style="border-color:rgba(66,133,244,.4);color:#4285f4" title="Синхронизировать из Google Sheets">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Синхр. Sheets
+          </button>
+          <button class="btn" id="mpBitrixBtn" onclick="mpSyncBitrix()" style="border-color:rgba(224,74,31,.4);color:#e04a1f" title="Подтянуть факт из Bitrix24 по UTM">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>
+            Факт из B24
+          </button>
+          <button class="btn" onclick="mpImportCSV()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Импорт CSV
+          </button>
+          <button class="btn" onclick="mpExportCSV()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Экспорт
+          </button>
+          <button class="btn pri" onclick="openMpModal(null)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Добавить строку
+          </button>
+        </div>
+      </div>
+
+      <!-- PROJECT CARDS -->
+      <div class="mp-project-grid" id="mpProjectGrid"></div>
+
+      <!-- PLAN vs ACTUAL KPIs -->
+      <div class="mp-pva-row" id="mpPvaRow"></div>
+
+      <!-- FILTERS -->
+      <div class="filter-bar" id="mpFilterBar" style="margin-bottom:14px">
+        <span class="filter-label">Проект:</span>
+        <select class="dsel" id="mpFProject" onchange="renderMediaplan()"><option value="">Все проекты</option></select>
+        <select class="dsel" id="mpFPlatform" onchange="renderMediaplan()"><option value="">Все платформы</option></select>
+        <select class="dsel" id="mpFOwner" onchange="renderMediaplan()"><option value="">Все владельцы</option></select>
+        <select class="dsel" id="mpFStatus" onchange="renderMediaplan()">
+          <option value="">Все статусы</option>
+          <option value="active">Активна</option>
+          <option value="paused">На паузе</option>
+          <option value="planned">Запланирована</option>
+          <option value="ended">Завершена</option>
+        </select>
+        <span class="filter-sep" style="margin-left:auto"></span>
+        <select class="dsel" id="mpView" onchange="renderMediaplan()">
+          <option value="table">Таблица</option>
+          <option value="gantt">Ганта</option>
+          <option value="pivot">Сводная</option>
+        </select>
+      </div>
+
+      <!-- TABLE VIEW -->
+      <div id="mpTableView">
+        <div class="camp-table-wrap">
+          <table class="camp-table" id="mpTable">
+            <thead>
+              <tr>
+                <th onclick="mpSort('project')">Проект <span id="mps-project">↕</span></th>
+                <th onclick="mpSort('platform')">Платформа <span id="mps-platform">↕</span></th>
+                <th>Гео</th>
+                <th onclick="mpSort('campaign')">Кампания <span id="mps-campaign">↕</span></th>
+                <th>Формат</th>
+                <th>Target</th>
+                <th>Owner</th>
+                <th>Аудитория</th>
+                <th>Статус</th>
+                <th onclick="mpSort('budgetPlan')">Бюджет план <span id="mps-budgetPlan">↕</span></th>
+                <th onclick="mpSort('budgetFact')">Бюджет факт <span id="mps-budgetFact">↕</span></th>
+                <th>%</th>
+                <th onclick="mpSort('leadsPlan')">Лиды план <span id="mps-leadsPlan">↕</span></th>
+                <th onclick="mpSort('leadsFact')">Лиды факт <span id="mps-leadsFact">↕</span></th>
+                <th onclick="mpSort('cpl')">CPL <span id="mps-cpl">↕</span></th>
+                <th style="width:70px"></th>
+              </tr>
+            </thead>
+            <tbody id="mpBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- GANTT VIEW -->
+      <div id="mpGanttView" style="display:none">
+        <div class="ccard" style="overflow-x:auto">
+          <div id="mpGantt" style="min-width:900px"></div>
+        </div>
+      </div>
+
+      <!-- PIVOT VIEW -->
+      <div id="mpPivotView" style="display:none">
+        <div class="brow">
+          <div class="ccard">
+            <div class="ccard-hd"><div class="ccard-ttl">Бюджет по проектам</div></div>
+            <div style="position:relative;height:240px"><canvas id="mpPivotChart1"></canvas></div>
+          </div>
+          <div class="ccard">
+            <div class="ccard-hd"><div class="ccard-ttl">Лиды план vs факт</div></div>
+            <div style="position:relative;height:240px"><canvas id="mpPivotChart2"></canvas></div>
+          </div>
+        </div>
+        <div class="ccard" style="margin-top:14px">
+          <div class="ccard-hd"><div class="ccard-ttl">CPL по платформам</div></div>
+          <div style="position:relative;height:200px"><canvas id="mpPivotChart3"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEDIAPLAN ROW MODAL -->
+    <div class="mov" id="mpModal">
+      <div class="modal" style="width:680px;max-height:92vh;display:flex;flex-direction:column">
+        <div class="mhd" style="flex-shrink:0">
+          <span class="mttl" id="mpModalTitle">Новая строка медиаплана</span>
+          <button class="mclose" onclick="closeMpModal()">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div class="mfield"><label>Проект / Ивент</label>
+              <input id="mpfProject" type="text" placeholder="LNGCON, PHARMAP…" list="mpProjectList">
+              <datalist id="mpProjectList"></datalist>
+            </div>
+            <div class="mfield"><label>Платформа</label>
+              <select id="mpfPlatform" class="dsel" style="width:100%">
+                <option>LinkedIn O&G</option><option>LinkedIn Pharma</option>
+                <option>LinkedIn Chemical</option><option>LinkedIn</option>
+                <option>Telegram</option><option>Яндекс.Директ</option>
+                <option>Google Ads</option><option>Email</option><option>Другое</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Гео</label>
+              <select id="mpfGeo" class="dsel" style="width:100%">
+                <option>EU</option><option>RUS</option><option>GLOBAL</option><option>CIS</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Кампания</label>
+              <input id="mpfCampaign" type="text" placeholder="Retarget, Look-a-like, Base…">
+            </div>
+            <div class="mfield"><label>Формат</label>
+              <select id="mpfFormat" class="dsel" style="width:100%">
+                <option>1 image</option><option>2 image</option><option>Carousel</option>
+                <option>Video</option><option>Message</option><option>Text</option>
+                <option>Story</option><option>Другое</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Target</label>
+              <select id="mpfTarget" class="dsel" style="width:100%">
+                <option>Speaker target</option><option>Exhibitor target</option>
+                <option>Sponsor target</option><option>Country Target</option>
+                <option>Package promo</option><option>Session Promo</option>
+                <option>Registered</option><option>Last call</option>
+                <option>Free pass</option><option>Awareness</option>
+                <option>Article</option><option>Media Digest</option>
+                <option>Webinar</option><option>Contest</option>
+                <option>Interview</option><option>Post-event</option>
+                <option>Funnel</option><option>Feedback</option>
+                <option>Announcement</option><option>Rebooking</option>
+                <option>6 month</option><option>Sponsor newsletter</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Owner</label>
+              <select id="mpfOwner" class="dsel" style="width:100%">
+                <option>VIP</option><option>Sales</option><option>VIP+Sales</option>
+                <option>Marketing</option><option>PR</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Аудитория</label>
+              <select id="mpfAudience" class="dsel" style="width:100%">
+                <option>All</option><option>Registered</option>
+                <option>Non-registered</option><option>Specific segment</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Статус</label>
+              <select id="mpfStatus" class="dsel" style="width:100%">
+                <option value="planned">Запланирована</option>
+                <option value="active">Активна</option>
+                <option value="paused">На паузе</option>
+                <option value="ended">Завершена</option>
+              </select>
+            </div>
+            <div class="mfield"><label>Дата старта</label>
+              <input id="mpfStart" type="date">
+            </div>
+            <div class="mfield"><label>Бюджет план (₽)</label>
+              <input id="mpfBudgetPlan" type="number" placeholder="0">
+            </div>
+            <div class="mfield"><label>Бюджет факт (₽)</label>
+              <input id="mpfBudgetFact" type="number" placeholder="0">
+            </div>
+            <div class="mfield"><label>Лиды план</label>
+              <input id="mpfLeadsPlan" type="number" placeholder="0">
+            </div>
+            <div class="mfield"><label>Лиды факт</label>
+              <input id="mpfLeadsFact" type="number" placeholder="0">
+            </div>
+          </div>
+          <div class="mfield"><label>Комментарий</label>
+            <textarea id="mpfComment" rows="2" placeholder="Заметки по строке…"
+              style="width:100%;padding:9px 11px;font-size:13px;font-family:var(--fb);
+              background:var(--surface2);border:1px solid var(--border2);border-radius:9px;
+              color:var(--text);outline:none;resize:vertical"
+              onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"></textarea>
+          </div>
+        </div>
+        <div class="mfoot" style="flex-shrink:0">
+          <button class="btn" onclick="closeMpModal()">Отмена</button>
+          <button class="btn pri" onclick="saveMpRow()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MP CSV IMPORT hidden input -->
+    <input type="file" id="mpCsvInput" accept=".csv" style="display:none" onchange="mpHandleCSV(this)">
     <!-- ── LEADS TABLE PAGE ── -->
     <div class="page" id="pg-leads-table">
       <div class="topbar">
@@ -1713,6 +1999,10 @@ input:focus,select:focus,textarea:focus{
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       Ещё
       <div class="bnav-more-menu" id="bnavMore" onclick="event.stopPropagation()">
+        <button class="bnav-more-item" data-page="mediaplan" onclick="bnavTo('mediaplan',this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Медиаплан
+        </button>
         <button class="bnav-more-item" data-page="leads-table" onclick="bnavTo('leads-table',this)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
           База лидов
@@ -1753,9 +2043,9 @@ document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')
 document.getElementById('li').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('lp').focus()});
 
 // ══ DATA ══════════════════════════════════════════════
-const CHANNELS=['Organic','Paid Search','Social','Email','Direct','Referral'];
-const CH_ICONS=['🔍','💰','📱','📧','🔗','🌐'];
-let PALETTE=['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9'];
+const CHANNELS=['Organic','Paid Search','Social','Email','Direct','Referral','Telegram'];
+const CH_ICONS=['🔍','💰','📱','📧','🔗','🌐','✈️'];
+let PALETTE=['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9','#229ED9'];
 const SPENDS=[0,4200,800,200,0,100]; // base spend per channel
 
 function genData(days,fromDate=null){
@@ -2844,14 +3134,26 @@ const PLATFORMS = {
   bitrix24: {
     label: 'Bitrix24 CRM', icon: '🟠', color: '#e04a1f',
     endpoint: 'bitrix24',
-    customCard: true,   // rendered separately
+    customCard: true,
     fields: [
-      {k:'webhook',     l:'Webhook URL',      t:'text',     p:'https://your.bitrix24.ru/rest/1/xxxxx/'},
-      {k:'portal',      l:'Домен портала',    t:'text',     p:'your-company.bitrix24.ru'},
-      {k:'entity_type', l:'Синхронизировать', t:'select',   p:'both',
+      {k:'webhook',     l:'Webhook URL',      t:'text',   p:'https://your.bitrix24.ru/rest/1/xxxxx/'},
+      {k:'portal',      l:'Домен портала',    t:'text',   p:'your-company.bitrix24.ru'},
+      {k:'entity_type', l:'Синхронизировать', t:'select', p:'both',
        options:['leads','deals','both'], labels:['Только лиды','Только сделки','Лиды и сделки']},
     ],
     hint: 'Создайте входящий вебхук: Bitrix24 → Разработчикам → Другое → Входящий вебхук. Нужны права: crm.lead.read, crm.deal.read'
+  },
+  google_sheets: {
+    label: 'Google Sheets (Медиаплан)', icon: '📊', color: '#34a853',
+    endpoint: 'sheets',
+    fields: [
+      {k:'spreadsheet_id', l:'ID таблицы',    t:'text', p:'1sx_aX23T_HtgRCk6KxVbSoU97ccvO3nTlAYYCfMc0V4'},
+      {k:'sheet_gid',      l:'GID листа',     t:'text', p:'287894245'},
+      {k:'sheet_name',     l:'Имя листа',     t:'text', p:'Sheet1 или Mediaplan'},
+      {k:'sa_email',       l:'Service Account Email', t:'text', p:'markdash@project.iam.gserviceaccount.com'},
+      {k:'sa_key',         l:'Private Key (PEM)', t:'password', p:'-----BEGIN PRIVATE KEY-----'},
+    ],
+    hint: 'Два способа: 1) Service Account — безопасно, таблица остаётся приватной. 2) Сделать таблицу публичной (Файл → Опубликовать) — тогда SA не нужен, достаточно ID и GID.'
   },
 };
 
@@ -3522,6 +3824,807 @@ function exportLeadsCSV(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`bgs_leads_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   showToast('CSV экспортирован','success');
+}
+
+// ══ MEDIAPLAN ════════════════════════════════════════
+
+// ── constants from the BGS media plan ────────────────
+const MP_PROJECTS = ['LNGCON','PRC EUROPE','PHARMAP','AUTOMA+','AUTOMA','SYNTHESIS',
+  'DECARBON','NEFT 4.0','WINE','AUTOMA Chem','NEDRA 4.0'];
+const MP_PLATFORMS = ['LinkedIn O&G','LinkedIn Pharma','LinkedIn Chemical','LinkedIn',
+  'Telegram','Яндекс.Директ','Google Ads','Email','Другое'];
+const MP_FORMATS  = ['1 image','2 image','Carousel','Video','Message','Text','Story','Другое'];
+const MP_TARGETS  = ['Speaker target','Exhibitor target','Sponsor target','Country Target',
+  'Package promo','Session Promo','Registered','Last call','Free pass','Awareness',
+  'Article','Media Digest','Webinar','Contest','Interview','Post-event',
+  'Funnel','Feedback','Announcement','Rebooking','6 month','Sponsor newsletter'];
+const MP_OWNERS   = ['VIP','Sales','VIP+Sales','Marketing','PR'];
+const MP_GEOS     = ['EU','RUS','GLOBAL','CIS'];
+const MP_STATUSES = {planned:'Запланирована',active:'Активна',paused:'На паузе',ended:'Завершена'};
+const MP_PROJ_COLORS = ['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9',
+  '#229ED9','#7B5EA7','#3dcea0','#E67E22','#95A5A6'];
+
+// Platform → internal channel mapping (for plan vs actual matching)
+const MP_PLATFORM_CH = {
+  'LinkedIn O&G':'Social','LinkedIn Pharma':'Social','LinkedIn Chemical':'Social',
+  'LinkedIn':'Social','Telegram':'Telegram','Яндекс.Директ':'Paid Search',
+  'Google Ads':'Paid Search','Email':'Email',
+};
+
+// ── state ─────────────────────────────────────────────
+let mediaplanDB = [];
+let mpSortCol = 'project';
+let mpSortDir = 1;
+let editingMpId = null;
+let mpActiveProject = '';  // '' = all
+let mpCharts = {};
+
+// ── init ──────────────────────────────────────────────
+function initMediaplan(){
+  const saved = lsGet('mediaplan_db');
+  if(saved && saved.length){
+    mediaplanDB = saved.map(r=>({...r,
+      startDate: r.startDate ? new Date(r.startDate) : null,
+      endDate:   r.endDate   ? new Date(r.endDate)   : null,
+    }));
+  } else {
+    mediaplanDB = generateDemoMediaplan();
+    saveMpDB();
+  }
+  populateMpFilters();
+  renderMediaplan();
+}
+
+function saveMpDB(){ lsSet('mediaplan_db', mediaplanDB); }
+
+function generateDemoMediaplan(){
+  const rows = [];
+  const now = new Date();
+  let idx = 1;
+  // generate realistic rows based on the actual spreadsheet structure
+  const specs = [
+    {proj:'LNGCON',     pl:'LinkedIn O&G',    geo:'EU',  camp:'Retarget',    fmt:'1 image',  tgt:'Speaker target',   own:'VIP',      aud:'Registered',     bPlan:80000, lPlan:150},
+    {proj:'LNGCON',     pl:'LinkedIn O&G',    geo:'EU',  camp:'Look-a-like', fmt:'Carousel', tgt:'Exhibitor target', own:'Sales',    aud:'Non-registered', bPlan:60000, lPlan:100},
+    {proj:'PRC EUROPE', pl:'LinkedIn Pharma', geo:'EU',  camp:'Base',        fmt:'Video',    tgt:'Sponsor target',   own:'VIP+Sales',aud:'All',            bPlan:90000, lPlan:200},
+    {proj:'PHARMAP',    pl:'LinkedIn Pharma', geo:'RUS', camp:'Retarget',    fmt:'1 image',  tgt:'Country Target',   own:'VIP',      aud:'Registered',     bPlan:70000, lPlan:120},
+    {proj:'AUTOMA+',    pl:'Telegram',        geo:'RUS', camp:'Base',        fmt:'Message',  tgt:'Package promo',    own:'Sales',    aud:'Specific segment',bPlan:30000, lPlan:80},
+    {proj:'AUTOMA',     pl:'Яндекс.Директ',  geo:'RUS', camp:'Base',        fmt:'2 image',  tgt:'Session Promo',    own:'Marketing',aud:'All',            bPlan:50000, lPlan:90},
+    {proj:'SYNTHESIS',  pl:'LinkedIn Chemical',geo:'EU', camp:'Base',        fmt:'1 image',  tgt:'Awareness',        own:'VIP',      aud:'All',            bPlan:65000, lPlan:110},
+    {proj:'DECARBON',   pl:'LinkedIn O&G',    geo:'EU',  camp:'Retarget',    fmt:'Carousel', tgt:'Last call',        own:'VIP+Sales',aud:'Registered',     bPlan:45000, lPlan:75},
+    {proj:'NEFT 4.0',   pl:'Яндекс.Директ',  geo:'RUS', camp:'Base',        fmt:'1 image',  tgt:'Registered',       own:'Sales',    aud:'Registered',     bPlan:40000, lPlan:60},
+    {proj:'WINE',       pl:'Telegram',        geo:'RUS', camp:'Base',        fmt:'Message',  tgt:'Announcement',     own:'Marketing',aud:'All',            bPlan:20000, lPlan:40},
+    {proj:'AUTOMA Chem',pl:'LinkedIn Chemical',geo:'EU', camp:'Look-a-like', fmt:'Video',    tgt:'Exhibitor target', own:'Sales',    aud:'Non-registered', bPlan:55000, lPlan:95},
+    {proj:'NEDRA 4.0',  pl:'Яндекс.Директ',  geo:'RUS', camp:'Retarget',    fmt:'2 image',  tgt:'Rebooking',        own:'VIP',      aud:'Registered',     bPlan:35000, lPlan:55},
+    {proj:'LNGCON',     pl:'Email',           geo:'EU',  camp:'Base',        fmt:'Text',     tgt:'Sponsor newsletter',own:'VIP',     aud:'Registered',     bPlan:15000, lPlan:30},
+    {proj:'PRC EUROPE', pl:'Telegram',        geo:'EU',  camp:'Base',        fmt:'Message',  tgt:'Media Digest',     own:'Marketing',aud:'All',            bPlan:25000, lPlan:50},
+  ];
+  specs.forEach((s, i) => {
+    const startDate = new Date(now); startDate.setDate(startDate.getDate() - Math.floor(Math.random()*40));
+    const endDate   = new Date(startDate); endDate.setDate(endDate.getDate() + 30 + Math.floor(Math.random()*30));
+    const bFact = Math.round(s.bPlan * (0.4 + Math.random()*0.7));
+    const lFact = Math.round(s.lPlan * (0.3 + Math.random()*0.8));
+    const statuses = ['active','active','active','paused','ended','planned'];
+    rows.push({
+      id: `MP${String(idx++).padStart(3,'0')}`,
+      project:    s.proj,
+      platform:   s.pl,
+      geo:        s.geo,
+      campaign:   s.camp,
+      format:     s.fmt,
+      target:     s.tgt,
+      owner:      s.own,
+      audience:   s.aud,
+      status:     statuses[Math.floor(Math.random()*statuses.length)],
+      startDate,
+      endDate,
+      budgetPlan: s.bPlan,
+      budgetFact: bFact,
+      leadsPlan:  s.lPlan,
+      leadsFact:  lFact,
+      cpl:        lFact > 0 ? Math.round(bFact/lFact) : 0,
+      comment:    '',
+    });
+  });
+  return rows;
+}
+
+// ── filters ───────────────────────────────────────────
+function populateMpFilters(){
+  const projects  = [...new Set(mediaplanDB.map(r=>r.project))].sort();
+  const platforms = [...new Set(mediaplanDB.map(r=>r.platform))].sort();
+  const owners    = [...new Set(mediaplanDB.map(r=>r.owner))].sort();
+
+  const fill = (id, vals) => {
+    const el = document.getElementById(id); if(!el) return;
+    const cur = el.value;
+    el.innerHTML = '<option value="">' + el.options[0]?.text + '</option>';
+    vals.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; el.appendChild(o); });
+    el.value = cur;
+  };
+  fill('mpFProject',  projects);
+  fill('mpFPlatform', platforms);
+  fill('mpFOwner',    owners);
+
+  // update datalist
+  const dl = document.getElementById('mpProjectList');
+  if(dl){ dl.innerHTML = projects.map(p=>`<option value="${p}">`).join(''); }
+}
+
+function getMpFiltered(){
+  const proj  = document.getElementById('mpFProject')?.value  || '';
+  const plat  = document.getElementById('mpFPlatform')?.value || '';
+  const owner = document.getElementById('mpFOwner')?.value    || '';
+  const stat  = document.getElementById('mpFStatus')?.value   || '';
+  return mediaplanDB.filter(r=>{
+    if(mpActiveProject && r.project !== mpActiveProject) return false;
+    if(proj  && r.project  !== proj)  return false;
+    if(plat  && r.platform !== plat)  return false;
+    if(owner && r.owner    !== owner) return false;
+    if(stat  && r.status   !== stat)  return false;
+    return true;
+  });
+}
+
+// ── main render ───────────────────────────────────────
+function renderMediaplan(){
+  const view = document.getElementById('mpView')?.value || 'table';
+  document.getElementById('mpTableView').style.display  = view==='table' ? '' : 'none';
+  document.getElementById('mpGanttView').style.display  = view==='gantt' ? '' : 'none';
+  document.getElementById('mpPivotView').style.display  = view==='pivot' ? '' : 'none';
+
+  renderMpProjects();
+  renderMpPva();
+  if(view==='table') renderMpTable();
+  if(view==='gantt') renderMpGantt();
+  if(view==='pivot') renderMpPivot();
+  updateMpSubtitle();
+}
+
+// ── project cards ─────────────────────────────────────
+function renderMpProjects(){
+  const grid = document.getElementById('mpProjectGrid'); if(!grid) return;
+  // aggregate by project
+  const byProj = {};
+  mediaplanDB.forEach(r=>{
+    if(!byProj[r.project]) byProj[r.project]={bPlan:0,bFact:0,lPlan:0,lFact:0,rows:0,active:0};
+    const p=byProj[r.project];
+    p.bPlan+=r.budgetPlan; p.bFact+=r.budgetFact;
+    p.lPlan+=r.leadsPlan;  p.lFact+=r.leadsFact;
+    p.rows++; if(r.status==='active') p.active++;
+  });
+
+  grid.innerHTML = Object.entries(byProj).map(([proj,d],i)=>{
+    const color = MP_PROJ_COLORS[i % MP_PROJ_COLORS.length];
+    const pct   = d.bPlan > 0 ? Math.round(d.bFact/d.bPlan*100) : 0;
+    const isActive = mpActiveProject === proj;
+    return `<div class="mp-project-card ${isActive?'active':''}" style="--pc:${color}"
+      onclick="mpToggleProject('${proj}')">
+      <div class="mp-proj-name">${proj}
+        ${d.active>0?`<span style="font-size:10px;background:rgba(61,206,160,.15);color:#3dcea0;padding:1px 6px;border-radius:2px;margin-left:4px">${d.active} активных</span>`:''}
+      </div>
+      <div class="mp-proj-stats">
+        <div class="mp-proj-stat"><span>₽${Math.round(d.bFact/1000)}к</span>Расход</div>
+        <div class="mp-proj-stat"><span>${d.lFact}</span>Лиды</div>
+        <div class="mp-proj-stat"><span style="color:${pct>=100?'#3dcea0':pct>=70?'#f0a500':'#ff6b4a'}">${pct}%</span>Бюджет</div>
+        <div class="mp-proj-stat"><span>${d.rows}</span>Строк</div>
+      </div>
+      <div class="mp-proj-progress">
+        <div class="mp-proj-fill" style="width:${Math.min(pct,100)}%;background:${color}"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function mpToggleProject(proj){
+  mpActiveProject = mpActiveProject===proj ? '' : proj;
+  renderMediaplan();
+}
+
+// ── plan vs actual KPIs ───────────────────────────────
+function renderMpPva(){
+  const rows = getMpFiltered();
+  const totBPlan = rows.reduce((a,r)=>a+r.budgetPlan,0);
+  const totBFact = rows.reduce((a,r)=>a+r.budgetFact,0);
+  const totLPlan = rows.reduce((a,r)=>a+r.leadsPlan,0);
+  const totLFact = rows.reduce((a,r)=>a+r.leadsFact,0);
+  const avgCPL   = totLFact>0 ? Math.round(totBFact/totLFact) : 0;
+  const cplPlan  = totLPlan>0 ? Math.round(totBPlan/totLPlan) : 0;
+
+  const kpis = [
+    {lbl:'Бюджет план', fact:'₽'+Math.round(totBPlan/1000)+'к', plan:'',
+     pct:null, color:'#4f7fff'},
+    {lbl:'Бюджет факт', fact:'₽'+Math.round(totBFact/1000)+'к',
+     plan:'из ₽'+Math.round(totBPlan/1000)+'к',
+     pct:totBPlan>0?Math.round(totBFact/totBPlan*100):0, color:'#c8102e'},
+    {lbl:'Лиды план',   fact:totLPlan, plan:'', pct:null, color:'#4f7fff'},
+    {lbl:'Лиды факт',   fact:totLFact, plan:'план '+totLPlan,
+     pct:totLPlan>0?Math.round(totLFact/totLPlan*100):0, color:'#2196a8'},
+    {lbl:'CPL факт',    fact:'₽'+avgCPL, plan:'план ₽'+cplPlan,
+     pct:cplPlan>0?Math.round(cplPlan/Math.max(avgCPL,1)*100):null, color:'#f0a500'},
+    {lbl:'Активных строк', fact:rows.filter(r=>r.status==='active').length, plan:'из '+rows.length, pct:null, color:'#3dcea0'},
+  ];
+
+  const row = document.getElementById('mpPvaRow'); if(!row) return;
+  row.innerHTML = kpis.map(k=>{
+    const pctHtml = k.pct !== null ? `<span class="mp-pva-pct ${k.pct>=100?'over':'under'}">${k.pct}%</span>` : '';
+    const barPct  = k.pct !== null ? Math.min(k.pct, 100) : 0;
+    const barClr  = k.pct === null ? k.color : k.pct>=100 ? '#3dcea0' : k.pct>=70 ? '#f0a500' : '#ff6b4a';
+    return `<div class="mp-pva">
+      <div class="mp-pva-label">${k.lbl}</div>
+      <div class="mp-pva-vals">
+        <span class="mp-pva-fact" style="color:${k.color}">${k.fact}</span>
+        ${k.plan?`<span class="mp-pva-plan">${k.plan}</span>`:''}
+        ${pctHtml}
+      </div>
+      ${k.pct!==null?`<div class="mp-pva-bar"><div class="mp-pva-bar-fill" style="width:${barPct}%;background:${barClr}"></div></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── table ─────────────────────────────────────────────
+function mpSort(col){
+  mpSortCol===col ? mpSortDir*=-1 : (mpSortCol=col, mpSortDir=1);
+  ['project','platform','campaign','budgetPlan','budgetFact','leadsPlan','leadsFact','cpl'].forEach(c=>{
+    const el=document.getElementById('mps-'+c);
+    if(el) el.textContent = c===mpSortCol ? (mpSortDir===1?'↑':'↓') : '↕';
+  });
+  renderMpTable();
+}
+
+function renderMpTable(){
+  const rows = getMpFiltered().sort((a,b)=>{
+    const av=a[mpSortCol], bv=b[mpSortCol];
+    if(typeof av==='number') return (av-bv)*mpSortDir;
+    return String(av||'').localeCompare(String(bv||''))*mpSortDir;
+  });
+
+  const stBadge = {
+    planned:`<span class="badge" style="background:rgba(91,141,217,.12);color:#5b8dd9">Запланирована</span>`,
+    active: `<span class="badge badge-up">Активна</span>`,
+    paused: `<span class="badge" style="background:rgba(240,165,0,.12);color:#f0a500">На паузе</span>`,
+    ended:  `<span class="badge badge-dn">Завершена</span>`,
+  };
+
+  const body = document.getElementById('mpBody'); if(!body) return;
+  if(!rows.length){ body.innerHTML=`<tr><td colspan="16" style="text-align:center;padding:2rem;color:var(--muted)">Нет строк</td></tr>`; return; }
+
+  body.innerHTML = rows.map(r=>{
+    const bPct   = r.budgetPlan > 0 ? Math.round(r.budgetFact/r.budgetPlan*100) : 0;
+    const lPct   = r.leadsPlan  > 0 ? Math.round(r.leadsFact/r.leadsPlan*100)   : 0;
+    const bColor = bPct>=100?'#3dcea0':bPct>=70?'#f0a500':'#ff6b4a';
+    const pIdx   = MP_PROJ_COLORS[MP_PROJECTS.indexOf(r.project) % MP_PROJ_COLORS.length] || '#888';
+    // platform color
+    const platColors={'LinkedIn O&G':'#0077b5','LinkedIn Pharma':'#0a66c2','LinkedIn Chemical':'#004182',
+      'LinkedIn':'#0077b5','Telegram':'#229ED9','Яндекс.Директ':'#ffcc00','Google Ads':'#4285f4','Email':'#3dcea0'};
+    const pColor = platColors[r.platform] || '#888';
+
+    return `<tr>
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:5px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${pIdx};flex-shrink:0"></span>
+          <strong style="font-size:13px">${r.project}</strong>
+        </span>
+      </td>
+      <td><span class="mp-platform-tag" style="background:${pColor}22;color:${pColor}">${r.platform}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${r.geo}</td>
+      <td style="font-size:13px">${r.campaign}</td>
+      <td style="font-size:12px;color:var(--muted)">${r.format}</td>
+      <td style="font-size:11px;color:var(--muted);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.target}">${r.target}</td>
+      <td><span class="badge" style="background:rgba(79,127,255,.1);color:var(--accent4)">${r.owner}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${r.audience}</td>
+      <td>${stBadge[r.status]||r.status}</td>
+      <td style="font-variant-numeric:tabular-nums">₽${r.budgetPlan.toLocaleString('ru')}</td>
+      <td>
+        <div class="mp-budget-bar">
+          <span style="font-variant-numeric:tabular-nums;white-space:nowrap">₽${r.budgetFact.toLocaleString('ru')}</span>
+          <div class="barbg"><div class="barfg" style="width:${Math.min(bPct,100)}%;background:${bColor}"></div></div>
+        </div>
+      </td>
+      <td><span class="mp-pct-chip ${bPct>=100?'ok':bPct>=70?'warn':'over'}">${bPct}%</span></td>
+      <td style="font-variant-numeric:tabular-nums">${r.leadsPlan}</td>
+      <td style="font-variant-numeric:tabular-nums">${r.leadsFact}
+        <span style="font-size:10px;color:${lPct>=100?'#3dcea0':lPct>=70?'#f0a500':'#ff6b4a'}"> ${lPct}%</span>
+      </td>
+      <td style="font-variant-numeric:tabular-nums">${r.cpl>0?'₽'+r.cpl:'—'}</td>
+      <td>
+        <div class="camp-actions">
+          <button class="camp-act" onclick="openMpModal('${r.id}')">✏</button>
+          <button class="camp-act danger" onclick="deleteMpRow('${r.id}')">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── gantt ─────────────────────────────────────────────
+function renderMpGantt(){
+  const rows = getMpFiltered().filter(r=>r.startDate);
+  const container = document.getElementById('mpGantt'); if(!container) return;
+  if(!rows.length){ container.innerHTML='<p style="padding:2rem;color:var(--muted);text-align:center">Нет данных с датами</p>'; return; }
+
+  // find date range
+  const allDates = rows.flatMap(r=>[r.startDate, r.endDate].filter(Boolean));
+  const minD = new Date(Math.min(...allDates.map(d=>new Date(d))));
+  const maxD = new Date(Math.max(...allDates.map(d=>new Date(d))));
+  minD.setDate(1); maxD.setDate(1); maxD.setMonth(maxD.getMonth()+1);
+  const totalDays = Math.round((maxD-minD)/864e5)||1;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayPct = Math.max(0,Math.min(100,Math.round((today-minD)/864e5/totalDays*100)));
+
+  // build months header
+  const months=[]; let cur=new Date(minD);
+  while(cur<maxD){ months.push(new Date(cur)); cur.setMonth(cur.getMonth()+1); }
+  const mLabels = months.map(m=>m.toLocaleDateString('ru-RU',{month:'short',year:'2-digit'}));
+
+  const pColors = {};
+  [...new Set(rows.map(r=>r.project))].forEach((p,i)=>{ pColors[p]=MP_PROJ_COLORS[i%MP_PROJ_COLORS.length]; });
+
+  const gridLines = months.map(m=>{
+    const pct = Math.round((m-minD)/864e5/totalDays*100);
+    return `<div class="gantt-grid-line" style="left:${pct}%"></div>`;
+  }).join('');
+
+  const ganttRows = rows.map(r=>{
+    const s = new Date(r.startDate); s.setHours(0,0,0,0);
+    const e = r.endDate ? new Date(r.endDate) : new Date(s.getTime()+30*864e5); e.setHours(0,0,0,0);
+    const left = Math.max(0,Math.round((s-minD)/864e5/totalDays*100));
+    const width= Math.max(1,Math.round((e-s)/864e5/totalDays*100));
+    const color= pColors[r.project]||'#888';
+    const platColors={'LinkedIn O&G':'#0077b5','LinkedIn Pharma':'#0a66c2','LinkedIn Chemical':'#004182',
+      'LinkedIn':'#0077b5','Telegram':'#229ED9','Яндекс.Директ':'#c8102e','Google Ads':'#4285f4','Email':'#3dcea0'};
+    const barColor = platColors[r.platform]||color;
+    return `<div class="gantt-row">
+      <div class="gantt-row-label">
+        <strong style="color:${color}">${r.project}</strong>
+        <span>${r.platform} · ${r.format}</span>
+      </div>
+      <div class="gantt-timeline">
+        ${gridLines}
+        <div class="gantt-today-line" style="left:${todayPct}%"></div>
+        <div class="gantt-bar" style="left:${left}%;width:${width}%;background:${barColor}"
+          onclick="openMpModal('${r.id}')" title="${r.campaign} · ${r.target}">
+          ${width>8?r.campaign:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="gantt-wrap">
+    <div class="gantt-header">
+      <div class="gantt-header-label">Проект / Платформа</div>
+      <div class="gantt-months">${mLabels.map(m=>`<div class="gantt-month">${m}</div>`).join('')}</div>
+    </div>
+    ${ganttRows}
+  </div>`;
+}
+
+// ── pivot charts ──────────────────────────────────────
+function renderMpPivot(){
+  const rows = getMpFiltered();
+  Object.values(mpCharts).forEach(c=>{try{c.destroy();}catch(e){}});
+  mpCharts={};
+
+  // Chart 1: budget by project
+  const byProj={};
+  rows.forEach(r=>{
+    byProj[r.project]=byProj[r.project]||{plan:0,fact:0};
+    byProj[r.project].plan+=r.budgetPlan;
+    byProj[r.project].fact+=r.budgetFact;
+  });
+  const projLabels=Object.keys(byProj);
+  const c1=document.getElementById('mpPivotChart1');
+  if(c1) mpCharts.c1=new Chart(c1,{type:'bar',data:{
+    labels:projLabels,
+    datasets:[
+      {label:'План',data:projLabels.map(p=>byProj[p].plan),backgroundColor:'rgba(79,127,255,.25)',borderColor:'#4f7fff',borderWidth:1.5,borderRadius:2},
+      {label:'Факт',data:projLabels.map(p=>byProj[p].fact),backgroundColor:'rgba(200,16,46,.6)',borderRadius:2},
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#888',font:{size:11}}}},
+    scales:{x:{ticks:{color:'#555',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#555',font:{size:10},callback:v=>'₽'+Math.round(v/1000)+'к'},grid:{color:'rgba(255,255,255,.04)'}}}}});
+
+  // Chart 2: leads plan vs fact by project
+  const c2=document.getElementById('mpPivotChart2');
+  if(c2) mpCharts.c2=new Chart(c2,{type:'bar',data:{
+    labels:projLabels,
+    datasets:[
+      {label:'План',data:projLabels.map(p=>byProj[p]?rows.filter(r=>r.project===p).reduce((a,r)=>a+r.leadsPlan,0):0),backgroundColor:'rgba(33,150,168,.25)',borderColor:'#2196a8',borderWidth:1.5,borderRadius:2},
+      {label:'Факт',data:projLabels.map(p=>rows.filter(r=>r.project===p).reduce((a,r)=>a+r.leadsFact,0)),backgroundColor:'rgba(61,206,160,.6)',borderRadius:2},
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#888',font:{size:11}}}},
+    scales:{x:{ticks:{color:'#555',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#555',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+
+  // Chart 3: CPL by platform
+  const byPlat={};
+  rows.forEach(r=>{
+    if(!byPlat[r.platform]) byPlat[r.platform]={spend:0,leads:0};
+    byPlat[r.platform].spend+=r.budgetFact;
+    byPlat[r.platform].leads+=r.leadsFact;
+  });
+  const platLabels=Object.keys(byPlat);
+  const cplVals=platLabels.map(p=>byPlat[p].leads>0?Math.round(byPlat[p].spend/byPlat[p].leads):0);
+  const platColors2={'LinkedIn O&G':'#0077b5aa','LinkedIn Pharma':'#0a66c2aa','LinkedIn Chemical':'#004182aa',
+    'LinkedIn':'#0077b5aa','Telegram':'#229ED9aa','Яндекс.Директ':'#c8102eaa','Google Ads':'#4285f4aa','Email':'#3dcea0aa'};
+  const c3=document.getElementById('mpPivotChart3');
+  if(c3) mpCharts.c3=new Chart(c3,{type:'bar',data:{
+    labels:platLabels,
+    datasets:[{label:'CPL ₽',data:cplVals,backgroundColor:platLabels.map(p=>platColors2[p]||'#88888888'),borderRadius:2,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{color:'#555',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#555',font:{size:10},callback:v=>'₽'+v},grid:{color:'rgba(255,255,255,.04)'}}}}});
+}
+
+function updateMpSubtitle(){
+  const rows = getMpFiltered();
+  const sub = document.getElementById('mpSubtitle');
+  if(!sub) return;
+  const active=rows.filter(r=>r.status==='active').length;
+  const totalB=rows.reduce((a,r)=>a+r.budgetFact,0);
+  const totalL=rows.reduce((a,r)=>a+r.leadsFact,0);
+  sub.textContent=`${rows.length} строк · ${active} активных · расход ₽${Math.round(totalB/1000)}к · ${totalL} лидов`;
+}
+
+// ── modal ─────────────────────────────────────────────
+function openMpModal(id){
+  editingMpId = id;
+  const r = id ? mediaplanDB.find(x=>x.id===id) : null;
+  document.getElementById('mpModalTitle').textContent = r ? `Строка — ${r.project} · ${r.platform}` : 'Новая строка медиаплана';
+
+  const v=(elId,val)=>{ const el=document.getElementById(elId); if(el) el.value=val||''; };
+  v('mpfProject',    r?.project||'');
+  v('mpfPlatform',   r?.platform||MP_PLATFORMS[0]);
+  v('mpfGeo',        r?.geo||'EU');
+  v('mpfCampaign',   r?.campaign||'');
+  v('mpfFormat',     r?.format||MP_FORMATS[0]);
+  v('mpfTarget',     r?.target||MP_TARGETS[0]);
+  v('mpfOwner',      r?.owner||MP_OWNERS[0]);
+  v('mpfAudience',   r?.audience||'All');
+  v('mpfStatus',     r?.status||'planned');
+  v('mpfStart',      r?.startDate?new Date(r.startDate).toISOString().slice(0,10):'');
+  v('mpfBudgetPlan', r?.budgetPlan||'');
+  v('mpfBudgetFact', r?.budgetFact||'');
+  v('mpfLeadsPlan',  r?.leadsPlan||'');
+  v('mpfLeadsFact',  r?.leadsFact||'');
+  v('mpfComment',    r?.comment||'');
+
+  document.getElementById('mpModal').classList.add('open');
+}
+
+function closeMpModal(){
+  document.getElementById('mpModal').classList.remove('open');
+  editingMpId=null;
+}
+
+function saveMpRow(){
+  const g=id=>document.getElementById(id)?.value||'';
+  const bFact=parseInt(g('mpfBudgetFact'))||0;
+  const lFact=parseInt(g('mpfLeadsFact'))||0;
+
+  if(editingMpId){
+    const r=mediaplanDB.find(x=>x.id===editingMpId); if(!r){closeMpModal();return;}
+    r.project=g('mpfProject')||r.project; r.platform=g('mpfPlatform');
+    r.geo=g('mpfGeo'); r.campaign=g('mpfCampaign'); r.format=g('mpfFormat');
+    r.target=g('mpfTarget'); r.owner=g('mpfOwner'); r.audience=g('mpfAudience');
+    r.status=g('mpfStatus');
+    r.startDate=g('mpfStart')?new Date(g('mpfStart')):r.startDate;
+    r.budgetPlan=parseInt(g('mpfBudgetPlan'))||r.budgetPlan;
+    r.budgetFact=bFact; r.leadsPlan=parseInt(g('mpfLeadsPlan'))||r.leadsPlan;
+    r.leadsFact=lFact; r.cpl=lFact>0?Math.round(bFact/lFact):0;
+    r.comment=g('mpfComment');
+  } else {
+    const bPlan=parseInt(g('mpfBudgetPlan'))||0;
+    const lPlan=parseInt(g('mpfLeadsPlan'))||0;
+    mediaplanDB.unshift({
+      id:`MP${String(mediaplanDB.length+1).padStart(3,'0')}`,
+      project:g('mpfProject')||'Новый проект',
+      platform:g('mpfPlatform'), geo:g('mpfGeo'), campaign:g('mpfCampaign'),
+      format:g('mpfFormat'), target:g('mpfTarget'), owner:g('mpfOwner'),
+      audience:g('mpfAudience'), status:g('mpfStatus'),
+      startDate:g('mpfStart')?new Date(g('mpfStart')):new Date(),
+      endDate:null, budgetPlan:bPlan, budgetFact:bFact,
+      leadsPlan:lPlan, leadsFact:lFact, cpl:lFact>0?Math.round(bFact/lFact):0,
+      comment:g('mpfComment'),
+    });
+  }
+  saveMpDB();
+  populateMpFilters();
+  closeMpModal();
+  renderMediaplan();
+  showToast(editingMpId?'Строка обновлена':'Строка добавлена','success');
+}
+
+function deleteMpRow(id){
+  if(!confirm('Удалить строку?')) return;
+  mediaplanDB=mediaplanDB.filter(r=>r.id!==id);
+  saveMpDB(); populateMpFilters(); renderMediaplan();
+  showToast('Строка удалена','success');
+}
+
+// ── CSV import / export ───────────────────────────────
+function mpImportCSV(){ document.getElementById('mpCsvInput').click(); }
+
+function mpHandleCSV(inp){
+  const f=inp.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.trim().split('\n');
+    if(lines.length<2){showToast('Файл пустой','error');return;}
+    const hdr=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/"/g,''));
+    const ci=k=>hdr.findIndex(h=>h.includes(k));
+    const map={
+      project:  ci('проект')||ci('project'),
+      platform: ci('платформ')||ci('platform'),
+      geo:      ci('geo')||ci('геог'),
+      campaign: ci('кампания')||ci('campaign'),
+      format:   ci('формат')||ci('format'),
+      target:   ci('target')||ci('цел'),
+      owner:    ci('owner')||ci('владелец'),
+      audience: ci('аудитор')||ci('audience'),
+      status:   ci('status')||ci('статус'),
+      budgetPlan:ci('план')||ci('budget plan'),
+      budgetFact:ci('факт')||ci('budget fact'),
+      leadsPlan: ci('лиды план')||ci('leads plan'),
+      leadsFact: ci('лиды факт')||ci('leads fact'),
+    };
+
+    // status mapping
+    const stMap={'активна':'active','active':'active','запланирован':'planned','planned':'planned',
+      'пауза':'paused','paused':'paused','завершена':'ended','ended':'ended'};
+
+    const imported=lines.slice(1).filter(l=>l.trim()).map((line,i)=>{
+      const cols=line.split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+      const g=k=>map[k]>=0?cols[map[k]]:'';
+      const bFact=parseInt(g('budgetFact'))||0, lFact=parseInt(g('leadsFact'))||0;
+      const statusRaw=(g('status')||'').toLowerCase();
+      return {
+        id:`IMP${String(mediaplanDB.length+i+1).padStart(3,'0')}`,
+        project:   g('project')||'Импорт',
+        platform:  g('platform')||MP_PLATFORMS[0],
+        geo:       g('geo')||'EU',
+        campaign:  g('campaign')||'',
+        format:    g('format')||'1 image',
+        target:    g('target')||'',
+        owner:     g('owner')||'',
+        audience:  g('audience')||'All',
+        status:    stMap[statusRaw]||'planned',
+        startDate: null, endDate: null,
+        budgetPlan:parseInt(g('budgetPlan'))||0,
+        budgetFact:bFact, leadsPlan:parseInt(g('leadsPlan'))||0,
+        leadsFact: lFact, cpl:lFact>0?Math.round(bFact/lFact):0,
+        comment:   '',
+      };
+    });
+
+    // merge: replace rows with same project+platform+campaign
+    const key=r=>`${r.project}|${r.platform}|${r.campaign}`;
+    const existing=new Map(mediaplanDB.map(r=>[key(r),r]));
+    imported.forEach(r=>{existing.set(key(r),r);});
+    mediaplanDB=[...existing.values()];
+    saveMpDB(); populateMpFilters(); renderMediaplan();
+    showToast(`Импортировано ${imported.length} строк`,'success');
+  };
+  reader.readAsText(f,'utf-8');
+  inp.value='';
+}
+
+function mpExportCSV(){
+  const rows=getMpFiltered();
+  const cols=['project','platform','geo','campaign','format','target','owner','audience',
+    'status','budgetPlan','budgetFact','leadsPlan','leadsFact','cpl','comment'];
+  const hdrs=['Проект','Платформа','Гео','Кампания','Формат','Target','Owner','Аудитория',
+    'Статус','Бюджет план','Бюджет факт','Лиды план','Лиды факт','CPL','Комментарий'];
+  const csv=[hdrs.join(','),...rows.map(r=>cols.map(c=>`"${String(r[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`bgs_mediaplan_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  showToast('Медиаплан экспортирован','success');
+}
+
+// ── Google Sheets sync ────────────────────────────────
+let mpSyncing = false;
+
+async function mpSyncSheets(){
+  if(!HAS_BACKEND){ showToast('Бэкенд не запущен','error'); return; }
+  if(mpSyncing){ showToast('Синхронизация уже выполняется','error'); return; }
+
+  const btn = document.getElementById('mpSheetsBtn');
+  mpSyncing = true;
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Загрузка…'; }
+
+  // Check if spreadsheet_id is configured (from settings or localStorage)
+  const savedSheetId = lsGet('mp_sheet_id') || '';
+  if(!savedSheetId && HAS_BACKEND){
+    // try to get from health/credentials
+    try{
+      const h = await backendGet('/api/health');
+      if(!h.configured?.google_sheets_public){
+        const id = prompt('Введите ID Google таблицы:\n(из URL: docs.google.com/spreadsheets/d/ID/edit)','1sx_aX23T_HtgRCk6KxVbSoU97ccvO3nTlAYYCfMc0V4');
+        if(!id){ mpSyncing=false; if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Синхр. Sheets';} return; }
+        lsSet('mp_sheet_id', id.trim());
+      }
+    }catch(e){}
+  }
+
+  try{
+    const sheetId = savedSheetId || lsGet('mp_sheet_id') || '';
+    const gid     = lsGet('mp_sheet_gid') || '287894245';
+    const qs      = sheetId ? `?spreadsheet_id=${sheetId}&gid=${gid}` : '';
+
+    // Try private first, fallback to public CSV
+    let result;
+    try{
+      result = await backendGet('/api/sheets/mediaplan' + qs);
+    }catch(e){
+      // fallback to public CSV
+      result = await backendGet('/api/sheets/mediaplan/public' + qs);
+    }
+
+    if(result.error) throw new Error(result.error);
+    if(!result.rows?.length){
+      showToast('Google Sheets: нет строк. Проверьте ID таблицы и доступ','error');
+      return;
+    }
+
+    // Merge: keep locally added rows, replace sheet rows
+    const local = mediaplanDB.filter(r => !r._from_sheets);
+    mediaplanDB  = [...result.rows, ...local];
+    saveMpDB();
+    populateMpFilters();
+    renderMediaplan();
+    lsSet('mp_last_sync', result.synced_at);
+    showToast(`Sheets: загружено ${result.rows.length} строк`,'success');
+    updateMpSyncBadge(result.rows.length, result.synced_at);
+
+  }catch(e){
+    showToast('Ошибка Sheets: '+e.message,'error');
+    console.error('mpSyncSheets:', e);
+  }finally{
+    mpSyncing = false;
+    if(btn){
+      btn.disabled=false;
+      btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Синхр. Sheets';
+    }
+  }
+}
+
+// ── Bitrix24 UTM fact matching ────────────────────────
+async function mpSyncBitrix(){
+  if(!HAS_BACKEND){ showToast('Бэкенд не запущен','error'); return; }
+
+  const btn = document.getElementById('mpBitrixBtn');
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Матчинг…'; }
+
+  try{
+    const result = await backendGet('/api/mediaplan/sync');
+
+    if(result.error) throw new Error(result.error);
+    if(result.errors?.length) result.errors.forEach(e=>console.warn('Sync warning:',e));
+
+    if(result.planRows?.length){
+      // Update only the fact fields of existing rows from B24 matching
+      // Keep plan rows from sheets, just update leadsFact/budgetFact/cpl
+      result.planRows.forEach(newRow => {
+        const existing = mediaplanDB.find(r=>r.id===newRow.id || (r.project===newRow.project && r.platform===newRow.platform && r.campaign===newRow.campaign));
+        if(existing){
+          existing.leadsFact  = newRow.leadsFact  || existing.leadsFact;
+          existing.budgetFact = newRow.budgetFact || existing.budgetFact;
+          existing.cpl        = newRow.cpl        || existing.cpl;
+          if(newRow._matched_utms) existing._matched_utms = newRow._matched_utms;
+        }
+      });
+      saveMpDB();
+      renderMediaplan();
+      showToast(`B24 UTM матчинг: ${result.leadsMatched} лидов распределено по ${result.plan_total} строкам`,'success');
+    } else if(result.b24_total === 0){
+      showToast('Bitrix24: нет лидов. Сначала синхронизируйте базу лидов','error');
+    } else {
+      showToast('UTM матчинг: совпадений не найдено. Проверьте UTM-метки в кампаниях','error');
+    }
+
+    if(result.errors?.length){
+      showToast('Предупреждения: '+result.errors[0],'error');
+    }
+
+  }catch(e){
+    showToast('Ошибка B24 матчинга: '+e.message,'error');
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg> Факт из B24';
+    }
+  }
+}
+
+// ── full auto sync (Sheets + B24) ─────────────────────
+async function mpFullSync(){
+  await mpSyncSheets();
+  if(mediaplanDB.filter(r=>r._from_sheets).length > 0){
+    await mpSyncBitrix();
+  }
+}
+
+function updateMpSyncBadge(count, syncedAt){
+  const sub = document.getElementById('mpSubtitle');
+  if(!sub) return;
+  const dt = new Date(syncedAt||Date.now()).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const rows = getMpFiltered();
+  sub.innerHTML = `${rows.length} строк · <span style="color:#4285f4">📊 Sheets: ${count}</span> · синхр. ${dt}`;
+}
+
+// Auto-sync on page load if sheet_id saved
+function mpAutoSyncIfConfigured(){
+  if(!HAS_BACKEND) return;
+  const sheetId = lsGet('mp_sheet_id');
+  const lastSync = lsGet('mp_last_sync');
+  if(!sheetId) return;
+  // Re-sync if last sync was more than 30 minutes ago
+  if(lastSync){
+    const age = Date.now() - new Date(lastSync).getTime();
+    if(age < 30 * 60 * 1000) return; // less than 30 min — skip
+  }
+  mpSyncSheets();
+}
+
+// ── savePlatform extension for google_sheets ──────────
+const _origSavePlatform_sheets = savePlatform;
+async function savePlatform(key){
+  if(key !== 'google_sheets'){ return _origSavePlatform_sheets(key); }
+
+  const sheetId  = document.getElementById('pf_google_sheets_spreadsheet_id')?.value.trim()||'';
+  const gid      = document.getElementById('pf_google_sheets_sheet_gid')?.value.trim()||'287894245';
+  const sheetName= document.getElementById('pf_google_sheets_sheet_name')?.value.trim()||'Sheet1';
+
+  if(sheetId){ lsSet('mp_sheet_id', sheetId); lsSet('mp_sheet_gid', gid); }
+
+  if(HAS_BACKEND){
+    try{
+      await backendPost('/api/credentials', {
+        sheets: {
+          spreadsheet_id: sheetId,
+          sheet_gid: gid,
+          sheet_name: sheetName,
+          sa_email: document.getElementById('pf_google_sheets_sa_email')?.value.trim()||'',
+          sa_key:   document.getElementById('pf_google_sheets_sa_key')?.value.trim()||'',
+        }
+      });
+    }catch(e){ /* Vercel — saved in env vars */ }
+  }
+
+  const st = document.getElementById('pconn_google_sheets');
+  if(st){ st.textContent='Сохранено · ID: '+sheetId.slice(0,12)+'…'; st.className='conn-status'; }
+  showToast('Google Sheets настроен. Перейдите в Медиаплан и нажмите «Синхр. Sheets»','success');
+}
+
+// ── testPlatform extension for google_sheets ──────────
+const _origTestPlatform_sheets = testPlatform;
+async function testPlatform(key){
+  if(key !== 'google_sheets'){ return _origTestPlatform_sheets(key); }
+
+  const dot = document.getElementById('pdot_google_sheets');
+  const st  = document.getElementById('pconn_google_sheets');
+  const pst = document.getElementById('pstatus_google_sheets');
+  if(st){ st.textContent='Проверка…'; st.className='conn-status'; }
+
+  const sheetId = document.getElementById('pf_google_sheets_spreadsheet_id')?.value.trim()
+    || lsGet('mp_sheet_id')
+    || '1sx_aX23T_HtgRCk6KxVbSoU97ccvO3nTlAYYCfMc0V4';
+
+  if(!sheetId){ showToast('Введите ID таблицы','error'); return; }
+
+  try{
+    const res = await backendGet('/api/sheets/test?spreadsheet_id='+encodeURIComponent(sheetId));
+    if(res.ok){
+      if(dot) dot.className='status-dot green';
+      if(st){ st.textContent='✓ Подключено'; st.className='conn-status ok'; }
+      if(pst){ pst.textContent=res.hint||res.title||''; pst.style.color='var(--accent2)'; }
+      showToast('Google Sheets: '+( res.hint||'подключение успешно'),'success');
+    }else{
+      if(dot) dot.className='status-dot red';
+      if(st){ st.textContent='✗ Ошибка'; st.className='conn-status err'; }
+      if(pst){ pst.textContent=res.error||''; pst.style.color='var(--accent3)'; }
+      showToast('Google Sheets: '+(res.error||'ошибка'),'error');
+    }
+  }catch(e){
+    if(dot) dot.className='status-dot red';
+    if(st){ st.textContent='✗ '+e.message; st.className='conn-status err'; }
+    showToast('Ошибка: '+e.message,'error');
+  }
 }
 
 // ══ BITRIX24 INTEGRATION ═════════════════════════════
@@ -4481,6 +5584,7 @@ function navTo(id, el){
   if(id==='leads')       renderLeads();
   if(id==='campaigns')   { if(!campaignsDB.length) initCampaigns(); renderCampaigns(); }
   if(id==='leads-table'){ if(!leadsDB.length) initLeadsTable(); else ltFilter(); }
+  if(id==='mediaplan')  { if(!mediaplanDB.length) initMediaplan(); else renderMediaplan(); setTimeout(mpAutoSyncIfConfigured, 500); }
   if(id==='settings')    buildAlertTable();
 
   // Sync bottom nav
@@ -4488,7 +5592,7 @@ function navTo(id, el){
     b.classList.toggle('active', b.dataset.page===id));
   document.querySelectorAll('.bnav-more-item[data-page]').forEach(b=>
     b.classList.toggle('active', b.dataset.page===id));
-  const inMore = ['leads-table','settings'].includes(id);
+  const inMore = ['leads-table','settings','mediaplan'].includes(id);
   document.getElementById('bnavMoreBtn')?.classList.toggle('active', inMore);
 
   // Auto-close sidebar on mobile
@@ -4570,8 +5674,8 @@ function doExport(){
 // ══ THEME SYSTEM ═════════════════════════════════════
 
 const THEME_PALETTES = {
-  bgs:      ['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9'],
-  markdash: ['#4f7fff','#3dcea0','#ff6b4a','#a78bfa','#f5a623','#e040fb'],
+  bgs:      ['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9','#229ED9'],
+  markdash: ['#4f7fff','#3dcea0','#ff6b4a','#a78bfa','#f5a623','#e040fb','#229ED9'],
 };
 
 // BGS sidebar backgrounds for chart backgrounds
