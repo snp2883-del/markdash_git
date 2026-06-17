@@ -94,6 +94,145 @@ async function getGoogleAccessToken(creds) {
   return data.access_token;
 }
 
+
+// Shared normalizer for Bitrix24 leads and deals
+function normalizeLead(l, type) {
+  const stageField = type === 'deal' ? l.STAGE_ID : l.STATUS_ID;
+  return {
+    id:          'B24' + (type==='deal'?'D':'L') + l.ID,
+    b24_id:      l.ID, b24_type: type,
+    b24_status:  stageField || '',
+    name:        type === 'deal'
+      ? (l.TITLE || ('Сделка #' + l.ID))
+      : ([l.NAME, l.SECOND_NAME, l.LAST_NAME].filter(Boolean).join(' ') || l.TITLE || ('Лид #' + l.ID)),
+    email:       (l.EMAIL && l.EMAIL[0]?.VALUE) || '',
+    phone:       (l.PHONE && l.PHONE[0]?.VALUE) || '',
+    company:     l.COMPANY_TITLE || (l.COMPANY_ID ? ('Компания #' + l.COMPANY_ID) : ''),
+    channel:     mapB24Source(l.SOURCE_ID),
+    status:      mapB24Status(stageField),
+    manager:     l.ASSIGNED_BY_ID ? ('Сотрудник #' + l.ASSIGNED_BY_ID) : '',
+    deal:        parseFloat(l.OPPORTUNITY) || 0,
+    currency:    l.CURRENCY_ID || 'RUB',
+    createdAt:   l.DATE_CREATE   ? new Date(l.DATE_CREATE)  : new Date(),
+    updatedAt:   l.DATE_MODIFY   ? new Date(l.DATE_MODIFY)  : new Date(),
+    processTime: l.DATE_CREATE && l.DATE_MODIFY
+      ? Math.round((new Date(l.DATE_MODIFY) - new Date(l.DATE_CREATE)) / 3600000) : 0,
+    utmSource:   l.UTM_SOURCE   || '', utmMedium:   l.UTM_MEDIUM   || '',
+    utmCampaign: l.UTM_CAMPAIGN || '', utmTerm:     l.UTM_TERM     || '',
+    utmContent:  l.UTM_CONTENT  || '', landing:     '',
+    comments:    l.COMMENTS ? [{author:'Bitrix24', date: new Date(l.DATE_CREATE||Date.now()), text: l.COMMENTS}] : [],
+    history:     [{status: mapB24Status(stageField), date: new Date(l.DATE_CREATE||Date.now()),
+                   note: 'Импорт из Bitrix24 (статус: ' + (stageField||'?') + ')', diff: null}],
+    source: 'bitrix24',
+  };
+}
+
+// Standalone data fetch helpers (avoid internal HTTP requests on Vercel)
+async function fetchMetricaRows(c, from, to) {
+  const token = c.yandex_metrica.token.trim();
+  const authHeader = token.startsWith('y0_') ? ('Bearer ' + token) : ('OAuth ' + token);
+  const url = new URL('https://api-metrika.yandex.net/stat/v1/data');
+  url.searchParams.set('ids', c.yandex_metrica.counter_id);
+  url.searchParams.set('metrics', 'ym:s:visits,ym:s:pageviews,ym:s:bounceRate');
+  url.searchParams.set('dimensions', 'ym:s:date,ym:s:trafficSource');
+  url.searchParams.set('date1', from); url.searchParams.set('date2', to);
+  url.searchParams.set('limit', 1000); url.searchParams.set('sort', 'ym:s:date');
+  const r = await fetch(url.toString(), { headers: { Authorization: authHeader } });
+  const d = await r.json();
+  if (!r.ok) throw new Error('Metrica ' + r.status + ': ' + (d.message || d.errors?.[0]?.message || ''));
+  const rows = (d.data || []).map(item => ({
+    date: item.dimensions[0]?.name || '',
+    channel: mapMetricaSource(item.dimensions[1]?.name || 'direct'),
+    sessions: Math.round(item.metrics[0] || 0),
+    pageviews: Math.round(item.metrics[1] || 0),
+    bounceRate: +(item.metrics[2] || 0).toFixed(1),
+    conversions: 0, leads: 0, spend: 0, source: 'yandex_metrica',
+  }));
+  return { rows, source: 'yandex_metrica' };
+}
+
+async function fetchDirectRows(c, from, to) {
+  const token = c.yandex_direct.token.trim();
+  const authHeader = 'Bearer ' + token;
+  const authHeaders = { 'Content-Type': 'application/json; charset=utf-8', Authorization: authHeader, 'Accept-Language': 'ru' };
+  if (c.yandex_direct.login) authHeaders['Client-Login'] = c.yandex_direct.login;
+  const reportHeaders = { ...authHeaders, 'skipReportHeader': 'true', 'skipColumnHeader': 'false', 'skipReportSummary': 'true', 'returnMoneyInMicros': 'true' };
+  const body = JSON.stringify({ params: {
+    SelectionCriteria: { DateFrom: from, DateTo: to },
+    FieldNames: ['CampaignName','Impressions','Clicks','Cost','Conversions'],
+    ReportType: 'CAMPAIGN_PERFORMANCE_REPORT', DateRangeType: 'CUSTOM_DATE', Format: 'TSV',
+    IncludeVAT: 'NO', IncludeDiscount: 'NO',
+  }});
+  const r = await fetch('https://api.direct.yandex.com/json/v5/reports', { method: 'POST', headers: reportHeaders, body });
+  if (!r.ok) { const t = await r.text(); throw new Error('Direct ' + r.status + ': ' + t.slice(0,200)); }
+  const tsv = await r.text();
+  const lines = tsv.trim().split('\n').filter(l => l.trim());
+  if (!lines.length) return { rows: [], source: 'yandex_direct' };
+  const header = lines[0].split('\t');
+  const rows = lines.slice(1).map(line => {
+    const cols = line.split('\t');
+    const get = key => cols[header.indexOf(key)] || '0';
+    const leads = Math.round(+get('Conversions') || 0);
+    return { date: from, channel: 'Paid Search', campaign: get('CampaignName') || '',
+      sessions: Math.round(+get('Clicks') || 0), pageviews: 0, bounceRate: 0,
+      conversions: leads, leads, spend: Math.round((+get('Cost') || 0) / 1000000),
+      impressions: Math.round(+get('Impressions') || 0), source: 'yandex_direct' };
+  });
+  return { rows, source: 'yandex_direct' };
+}
+
+async function fetchGA4Rows(c, from, to) {
+  const token = await getGoogleAccessToken(c);
+  const body = {
+    dateRanges: [{ startDate: from, endDate: to }],
+    dimensions: [{ name: 'date' }, { name: 'sessionDefaultChannelGrouping' }],
+    metrics: [{ name: 'sessions' }, { name: 'screenPageViews' }, { name: 'bounceRate' }, { name: 'conversions' }],
+    limit: 10000,
+  };
+  const r = await fetch('https://analyticsdata.googleapis.com/v1beta/properties/' + c.google.ga4_property_id + '/runReport',
+    { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) throw new Error('GA4: ' + (d.error?.message || r.status));
+  const rows = (d.rows || []).map(row => {
+    const raw = row.dimensionValues[0].value;
+    return { date: raw.slice(6,8) + '.' + raw.slice(4,6),
+      channel: mapGA4Channel(row.dimensionValues[1].value),
+      sessions: Math.round(+row.metricValues[0].value || 0),
+      pageviews: Math.round(+row.metricValues[1].value || 0),
+      bounceRate: +(+row.metricValues[2].value * 100 || 0).toFixed(1),
+      conversions: Math.round(+row.metricValues[3].value || 0),
+      leads: 0, spend: 0, source: 'google_analytics' };
+  });
+  return { rows, source: 'google_analytics' };
+}
+
+async function fetchLinkedInRows(c, from, to) {
+  const fromD = new Date(from), toD = new Date(to);
+  const url = new URL('https://api.linkedin.com/v2/adAnalyticsV2');
+  url.searchParams.set('q', 'analytics'); url.searchParams.set('pivot', 'CAMPAIGN');
+  url.searchParams.set('dateRange.start.day', fromD.getDate());
+  url.searchParams.set('dateRange.start.month', fromD.getMonth() + 1);
+  url.searchParams.set('dateRange.start.year', fromD.getFullYear());
+  url.searchParams.set('dateRange.end.day', toD.getDate());
+  url.searchParams.set('dateRange.end.month', toD.getMonth() + 1);
+  url.searchParams.set('dateRange.end.year', toD.getFullYear());
+  url.searchParams.set('timeGranularity', 'DAILY');
+  url.searchParams.set('accounts[0]', 'urn:li:sponsoredAccount:' + c.linkedin.account_id);
+  url.searchParams.set('fields', 'dateRange,impressions,clicks,costInLocalCurrency,externalWebsiteConversions,leads');
+  const r = await fetch(url.toString(), { headers: { Authorization: 'Bearer ' + c.linkedin.access_token, 'LinkedIn-Version': '202401', 'X-Restli-Protocol-Version': '2.0.0' } });
+  const d = await r.json();
+  if (!r.ok) throw new Error('LinkedIn ' + r.status + ': ' + (d.message || ''));
+  const rows = (d.elements || []).map(el => {
+    const dr = el.dateRange?.start;
+    return { date: dr ? (String(dr.day).padStart(2,'0') + '.' + String(dr.month).padStart(2,'0')) : from,
+      channel: 'Social', sessions: Math.round(el.clicks || 0), pageviews: 0, bounceRate: 0,
+      conversions: Math.round(el.externalWebsiteConversions || 0),
+      leads: Math.round(el.leads || 0), spend: Math.round(+el.costInLocalCurrency || 0),
+      impressions: Math.round(el.impressions || 0), source: 'linkedin' };
+  });
+  return { rows, source: 'linkedin' };
+}
+
 async function b24call(webhook, method, params = {}) {
   const url = webhook.replace(/\/$/, '') + '/' + method + '.json';
   const r = await fetch(url, {
@@ -279,12 +418,14 @@ app.get('/api/test/:platform', async (req, res) => {
       case 'yandex_metrica': {
         if (!c.yandex_metrica.token || !c.yandex_metrica.counter_id)
           return res.json({ ok: false, error: 'Заполните Token и ID счётчика, затем нажмите «Проверить»' });
+        const mToken = c.yandex_metrica.token.trim();
+        const mAuth = mToken.startsWith('y0_') ? `Bearer ${mToken}` : `OAuth ${mToken}`;
         const r = await fetch(
           `https://api-metrika.yandex.net/stat/v1/data?ids=${c.yandex_metrica.counter_id}&metrics=ym:s:visits&date1=yesterday&date2=yesterday&limit=1`,
-          { headers: { Authorization: `OAuth ${c.yandex_metrica.token}` } }
+          { headers: { Authorization: mAuth } }
         );
         const d = await r.json();
-        if (!r.ok) return res.json({ ok: false, error: d.message || `HTTP ${r.status}` });
+        if (!r.ok) return res.json({ ok: false, error: d.message || d.errors?.[0]?.message || `HTTP ${r.status}` });
         return res.json({ ok: true, hint: `Счётчик ${c.yandex_metrica.counter_id} доступен` });
       }
       case 'yandex_direct': {
@@ -351,6 +492,13 @@ app.get('/api/data/yandex-metrica', async (req, res) => {
     return res.status(400).json({ error: 'Yandex.Metrica: токен не задан (CRED__YANDEX_METRICA__TOKEN)' });
   if (!c.yandex_metrica.counter_id)
     return res.status(400).json({ error: 'Yandex.Metrica: не задан ID счётчика (CRED__YANDEX_METRICA__COUNTER_ID)' });
+
+  const token = c.yandex_metrica.token.trim();
+  // y0_ tokens use Bearer, classic AQ/Ag tokens use OAuth
+  const authHeader = token.startsWith('y0_')
+    ? `Bearer ${token}`
+    : `OAuth ${token}`;
+
   try {
     const url = new URL('https://api-metrika.yandex.net/stat/v1/data');
     url.searchParams.set('ids',        c.yandex_metrica.counter_id);
@@ -361,10 +509,12 @@ app.get('/api/data/yandex-metrica', async (req, res) => {
     url.searchParams.set('limit',      1000);
     url.searchParams.set('sort',       'ym:s:date');
     const r = await fetch(url.toString(), {
-      headers: { Authorization: `OAuth ${c.yandex_metrica.token}` }
+      headers: { Authorization: authHeader }
     });
     const d = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: `Metrica ${r.status}: ${d.message || d.error_type || JSON.stringify(d).slice(0,200)}` });
+    if (!r.ok) return res.status(r.status).json({
+      error: `Metrica ${r.status}: ${d.message || d.errors?.[0]?.message || JSON.stringify(d).slice(0,200)}`
+    });
     const rows = (d.data || []).map(item => ({
       date:        item.dimensions[0]?.name || '',
       channel:     mapMetricaSource(item.dimensions[1]?.name || 'direct'),
@@ -388,9 +538,11 @@ app.get('/api/data/yandex-direct', async (req, res) => {
 
   try {
     // Step 1: validate token via campaigns API (JSON, easy to parse errors)
+    const dToken = c.yandex_direct.token.trim();
+    const dAuth = `Bearer ${dToken}`;
     const authHeaders = {
       'Content-Type':    'application/json; charset=utf-8',
-      'Authorization':   `Bearer ${c.yandex_direct.token}`,
+      'Authorization':   dAuth,
       'Accept-Language': 'ru',
     };
     if (c.yandex_direct.login) authHeaders['Client-Login'] = c.yandex_direct.login;
@@ -525,7 +677,7 @@ app.get('/api/data/google-ads', async (req, res) => {
     const query = `SELECT segments.date,campaign.name,campaign.status,metrics.clicks,metrics.impressions,metrics.cost_micros,metrics.conversions FROM campaign WHERE segments.date BETWEEN '${from}' AND '${to}' ORDER BY segments.date DESC LIMIT 1000`;
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'developer-token': c.google.ads_dev_token };
     if (c.google.ads_manager_id) headers['login-customer-id'] = c.google.ads_manager_id.replace(/-/g, '');
-    const r = await fetch(`https://googleads.googleapis.com/v15/customers/${customerId}/googleAds:search`, {
+    const r = await fetch(`https://googleads.googleapis.com/v18/customers/${customerId}/googleAds:search`, {
       method: 'POST', headers, body: JSON.stringify({ query }),
     });
     const d = await r.json();
@@ -585,20 +737,30 @@ app.get('/api/data/linkedin', async (req, res) => {
 app.get('/api/data/all', async (req, res) => {
   const c = getCreds();
   const { from, to } = parseDateParam(req);
-  const base = `${req.protocol}://${req.get('host')}`;
-  const qs   = `?from=${from}&to=${to}`;
-  const sources = [];
-  if (c.yandex_metrica.token)                                     sources.push(`${base}/api/data/yandex-metrica${qs}`);
-  if (c.yandex_direct.token)                                      sources.push(`${base}/api/data/yandex-direct${qs}`);
-  if (c.google.refresh_token && c.google.ga4_property_id)         sources.push(`${base}/api/data/google-analytics${qs}`);
-  if (c.google.refresh_token && c.google.ads_customer_id)         sources.push(`${base}/api/data/google-ads${qs}`);
-  if (c.linkedin.access_token)                                     sources.push(`${base}/api/data/linkedin${qs}`);
-  if (!sources.length) return res.json({ rows: [], warning: 'No sources configured', from, to });
-  const results = await Promise.allSettled(sources.map(u => fetch(u).then(r => r.json())));
+  const promises = [];
+
+  if (c.yandex_metrica.token && c.yandex_metrica.counter_id) {
+    promises.push(fetchMetricaRows(c, from, to).catch(e => ({ error: e.message, rows: [] })));
+  }
+  if (c.yandex_direct.token) {
+    promises.push(fetchDirectRows(c, from, to).catch(e => ({ error: e.message, rows: [] })));
+  }
+  if (c.google.refresh_token && c.google.ga4_property_id) {
+    promises.push(fetchGA4Rows(c, from, to).catch(e => ({ error: e.message, rows: [] })));
+  }
+  if (c.linkedin.access_token) {
+    promises.push(fetchLinkedInRows(c, from, to).catch(e => ({ error: e.message, rows: [] })));
+  }
+
+  if (!promises.length) return res.json({ rows: [], warning: 'No sources configured', from, to });
+
+  const results = await Promise.allSettled(promises);
   let allRows = [], errors = [];
   results.forEach(r => {
-    if (r.status === 'fulfilled' && r.value.rows) allRows = allRows.concat(r.value.rows);
-    if (r.status === 'fulfilled' && r.value.error) errors.push(r.value.error);
+    if (r.status === 'fulfilled') {
+      if (r.value.rows) allRows = allRows.concat(r.value.rows);
+      if (r.value.error) errors.push(r.value.error);
+    }
     if (r.status === 'rejected') errors.push(r.reason?.message || 'Unknown');
   });
   res.json({ rows: allRows, errors: errors.length ? errors : undefined, from, to, total: allRows.length });
@@ -635,23 +797,8 @@ app.get('/api/bitrix/leads', async (req, res) => {
       start, limit,
     });
     const items = Array.isArray(result) ? result : (result?.items || []);
-    const leads = items.map(l => ({
-      id: `B24L${l.ID}`, b24_id: l.ID, b24_type: 'lead',
-      name: [l.NAME, l.SECOND_NAME, l.LAST_NAME].filter(Boolean).join(' ') || l.TITLE || `Лид #${l.ID}`,
-      email: (l.EMAIL && l.EMAIL[0]?.VALUE) || '', phone: (l.PHONE && l.PHONE[0]?.VALUE) || '',
-      company: l.COMPANY_TITLE || '', channel: mapB24Source(l.SOURCE_ID),
-      status: mapB24Status(l.STATUS_ID), b24_status: l.STATUS_ID || '',
-      manager: l.ASSIGNED_BY_ID ? `Сотрудник #${l.ASSIGNED_BY_ID}` : '',
-      deal: parseFloat(l.OPPORTUNITY) || 0, currency: l.CURRENCY_ID || 'RUB',
-      createdAt: new Date(l.DATE_CREATE || Date.now()),
-      updatedAt: new Date(l.DATE_MODIFY || Date.now()),
-      processTime: l.DATE_CREATE && l.DATE_MODIFY ? Math.round((new Date(l.DATE_MODIFY)-new Date(l.DATE_CREATE))/3600000) : 0,
-      utmSource: l.UTM_SOURCE||'', utmMedium: l.UTM_MEDIUM||'', utmCampaign: l.UTM_CAMPAIGN||'',
-      utmTerm: l.UTM_TERM||'', utmContent: l.UTM_CONTENT||'', landing: '',
-      comments: l.COMMENTS ? [{author:'Bitrix24',date:new Date(l.DATE_CREATE||Date.now()),text:l.COMMENTS}] : [],
-      history: [{status:mapB24Status(l.STATUS_ID),date:new Date(l.DATE_CREATE||Date.now()),note:`Импорт из Bitrix24 (статус: ${l.STATUS_ID||'?'})`,diff:null}],
-      source: 'bitrix24',
-    }));
+    const leads = items.map(l => normalizeLead(l, 'lead'));
+    
     res.json({ leads, total: leads.length, next: start + limit });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -670,23 +817,8 @@ app.get('/api/bitrix/deals', async (req, res) => {
       start, limit,
     });
     const items = Array.isArray(result) ? result : (result?.items || []);
-    const deals = items.map(d => ({
-      id: `B24D${d.ID}`, b24_id: d.ID, b24_type: 'deal',
-      name: d.TITLE || `Сделка #${d.ID}`, email: '', phone: '',
-      company: d.COMPANY_ID ? `Компания #${d.COMPANY_ID}` : '',
-      channel: mapB24Source(d.SOURCE_ID), status: mapB24Status(d.STAGE_ID),
-      b24_status: d.STAGE_ID || '', b24_prob: parseInt(d.PROBABILITY) || 0,
-      manager: d.ASSIGNED_BY_ID ? `Сотрудник #${d.ASSIGNED_BY_ID}` : '',
-      deal: parseFloat(d.OPPORTUNITY) || 0, currency: d.CURRENCY_ID || 'RUB',
-      createdAt: new Date(d.DATE_CREATE || Date.now()),
-      updatedAt: new Date(d.DATE_MODIFY || Date.now()),
-      processTime: d.DATE_CREATE && d.DATE_MODIFY ? Math.round((new Date(d.DATE_MODIFY)-new Date(d.DATE_CREATE))/3600000) : 0,
-      utmSource: d.UTM_SOURCE||'', utmMedium: d.UTM_MEDIUM||'', utmCampaign: d.UTM_CAMPAIGN||'',
-      utmTerm: d.UTM_TERM||'', utmContent: d.UTM_CONTENT||'', landing: '',
-      comments: d.COMMENTS ? [{author:'Bitrix24',date:new Date(d.DATE_CREATE||Date.now()),text:d.COMMENTS}] : [],
-      history: [{status:mapB24Status(d.STAGE_ID),date:new Date(d.DATE_CREATE||Date.now()),note:`Импорт из Bitrix24 (стадия: ${d.STAGE_ID||'?'})`,diff:null}],
-      source: 'bitrix24',
-    }));
+    const deals = items.map(d => normalizeLead(d, 'deal'));
+    
     res.json({ deals, total: deals.length, next: start + limit });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -697,13 +829,29 @@ app.get('/api/bitrix/sync', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 200, 500);
   if (!c.bitrix24.webhook) return res.status(400).json({ error: 'Bitrix24 не настроен' });
   try {
-    const base = `${req.protocol}://${req.get('host')}`;
-    const promises = [];
-    if (type === 'leads' || type === 'both') promises.push(fetch(`${base}/api/bitrix/leads?limit=${limit}`).then(r=>r.json()));
-    if (type === 'deals' || type === 'both') promises.push(fetch(`${base}/api/bitrix/deals?limit=${limit}`).then(r=>r.json()));
-    const results = await Promise.all(promises);
     let all = [];
-    results.forEach(r => { if (r.leads) all = all.concat(r.leads); if (r.deals) all = all.concat(r.deals); });
+    if (type === 'leads' || type === 'both') {
+      const result = await b24call(c.bitrix24.webhook, 'crm.lead.list', {
+        order: { DATE_CREATE: 'DESC' }, filter: {},
+        select: ['ID','TITLE','NAME','LAST_NAME','SECOND_NAME','EMAIL','PHONE','COMPANY_TITLE',
+                 'SOURCE_ID','STATUS_ID','OPPORTUNITY','CURRENCY_ID','DATE_CREATE','DATE_MODIFY',
+                 'ASSIGNED_BY_ID','UTM_SOURCE','UTM_MEDIUM','UTM_CAMPAIGN','UTM_TERM','UTM_CONTENT','COMMENTS'],
+        start: 0, limit,
+      });
+      const items = Array.isArray(result) ? result : (result?.items || []);
+      all = all.concat(items.map(l => normalizeLead(l, 'lead')));
+    }
+    if (type === 'deals' || type === 'both') {
+      const result = await b24call(c.bitrix24.webhook, 'crm.deal.list', {
+        order: { DATE_CREATE: 'DESC' }, filter: {},
+        select: ['ID','TITLE','CONTACT_ID','COMPANY_ID','STAGE_ID','OPPORTUNITY','CURRENCY_ID',
+                 'SOURCE_ID','DATE_CREATE','DATE_MODIFY','ASSIGNED_BY_ID',
+                 'UTM_SOURCE','UTM_MEDIUM','UTM_CAMPAIGN','UTM_TERM','UTM_CONTENT','COMMENTS','PROBABILITY'],
+        start: 0, limit,
+      });
+      const items = Array.isArray(result) ? result : (result?.items || []);
+      all = all.concat(items.map(d => normalizeLead(d, 'deal')));
+    }
     res.json({ items: all, total: all.length, synced_at: new Date().toISOString() });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
