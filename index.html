@@ -3240,7 +3240,7 @@ function ltRender(){
     const initials=l.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const ptFmt=l.processTime<2?'< 2 ч':l.processTime<24?`${l.processTime} ч`:`${Math.floor(l.processTime/24)} дн`;
     const ptCls=l.processTime<6?'fast':l.processTime>48?'slow':'';
-    const dateStr=l.createdAt.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'});
+    const dateStr=new Date(l.createdAt).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'});
     const chIdx=CHANNELS.indexOf(l.channel);
     return `<tr onclick="openLeadModal('${l.id}')" data-id="${l.id}">
       <td class="lt-check-col" onclick="event.stopPropagation()">
