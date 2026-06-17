@@ -32,30 +32,38 @@ app.use(express.static(PUBLIC_DIR));
 function getCreds() {
   return {
     yandex_metrica: {
-      token:      process.env.CRED__YANDEX_METRICA__TOKEN      || process.env.YANDEX_METRICA_TOKEN      || '',
-      counter_id: process.env.CRED__YANDEX_METRICA__COUNTER_ID || process.env.YANDEX_METRICA_COUNTER_ID || '',
+      token:      process.env.CRED__YANDEX_METRICA__TOKEN      || '',
+      counter_id: process.env.CRED__YANDEX_METRICA__COUNTER_ID || '',
     },
     yandex_direct: {
-      token: process.env.CRED__YANDEX_DIRECT__TOKEN || process.env.YANDEX_DIRECT_TOKEN || '',
-      login: process.env.CRED__YANDEX_DIRECT__LOGIN || process.env.YANDEX_DIRECT_LOGIN || '',
+      token: process.env.CRED__YANDEX_DIRECT__TOKEN || '',
+      login: process.env.CRED__YANDEX_DIRECT__LOGIN || '',
     },
     google: {
-      client_id:       process.env.CRED__GOOGLE__CLIENT_ID       || process.env.GOOGLE_CLIENT_ID       || '',
-      client_secret:   process.env.CRED__GOOGLE__CLIENT_SECRET   || process.env.GOOGLE_CLIENT_SECRET   || '',
-      refresh_token:   process.env.CRED__GOOGLE__REFRESH_TOKEN   || process.env.GOOGLE_REFRESH_TOKEN   || '',
-      ga4_property_id: process.env.CRED__GOOGLE__GA4_PROPERTY_ID || process.env.GA4_PROPERTY_ID        || '',
-      ads_dev_token:   process.env.CRED__GOOGLE__ADS_DEV_TOKEN   || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
-      ads_customer_id: process.env.CRED__GOOGLE__ADS_CUSTOMER_ID || process.env.GOOGLE_ADS_CUSTOMER_ID || '',
-      ads_manager_id:  process.env.CRED__GOOGLE__ADS_MANAGER_ID  || process.env.GOOGLE_ADS_MANAGER_ID  || '',
+      client_id:       process.env.CRED__GOOGLE__CLIENT_ID       || '',
+      client_secret:   process.env.CRED__GOOGLE__CLIENT_SECRET   || '',
+      refresh_token:   process.env.CRED__GOOGLE__REFRESH_TOKEN   || '',
+      ga4_property_id: process.env.CRED__GOOGLE__GA4_PROPERTY_ID || '',
+      ads_dev_token:   process.env.CRED__GOOGLE__ADS_DEV_TOKEN   || '',
+      ads_customer_id: process.env.CRED__GOOGLE__ADS_CUSTOMER_ID || '',
+      ads_manager_id:  process.env.CRED__GOOGLE__ADS_MANAGER_ID  || '',
+    },
+    sheets: {
+      spreadsheet_id: process.env.CRED__SHEETS__SPREADSHEET_ID || '',
+      sheet_gid:      process.env.CRED__SHEETS__SHEET_GID      || '0',
+      sheet_name:     process.env.CRED__SHEETS__SHEET_NAME     || 'Sheet1',
+      // Service Account (preferred — sheet stays private)
+      sa_email:       process.env.CRED__SHEETS__SA_EMAIL       || '',
+      sa_key:         process.env.CRED__SHEETS__SA_KEY         || '', // private key PEM, \n escaped
     },
     linkedin: {
-      access_token: process.env.CRED__LINKEDIN__ACCESS_TOKEN || process.env.LINKEDIN_ACCESS_TOKEN || '',
-      account_id:   process.env.CRED__LINKEDIN__ACCOUNT_ID   || process.env.LINKEDIN_ACCOUNT_ID   || '',
+      access_token: process.env.CRED__LINKEDIN__ACCESS_TOKEN || '',
+      account_id:   process.env.CRED__LINKEDIN__ACCOUNT_ID   || '',
     },
     bitrix24: {
-      webhook:     process.env.CRED__BITRIX24__WEBHOOK     || process.env.BITRIX_WEBHOOK     || '',
-      portal:      process.env.CRED__BITRIX24__PORTAL      || process.env.BITRIX_PORTAL      || '',
-      entity_type: process.env.CRED__BITRIX24__ENTITY_TYPE || process.env.BITRIX_ENTITY_TYPE || 'both',
+      webhook:     process.env.CRED__BITRIX24__WEBHOOK     || '',
+      portal:      process.env.CRED__BITRIX24__PORTAL      || '',
+      entity_type: process.env.CRED__BITRIX24__ENTITY_TYPE || 'both',
     },
   };
 }
@@ -303,6 +311,8 @@ app.get('/api/health', (req, res) => {
       google_ads:       !!(c.google.refresh_token && c.google.ads_customer_id),
       linkedin:         !!c.linkedin.access_token,
       bitrix24:         !!c.bitrix24.webhook,
+      google_sheets:    !!(c.sheets.spreadsheet_id && (c.sheets.sa_email || c.google.refresh_token)),
+      google_sheets_public: !!c.sheets.spreadsheet_id,
     },
     uptime: Math.round(process.uptime()),
   });
@@ -764,6 +774,356 @@ app.get('/api/data/all', async (req, res) => {
     if (r.status === 'rejected') errors.push(r.reason?.message || 'Unknown');
   });
   res.json({ rows: allRows, errors: errors.length ? errors : undefined, from, to, total: allRows.length });
+});
+
+// ── Google Sheets ─────────────────────────────────────────────────────────────
+
+// Get access token — supports Service Account (JWT) and OAuth refresh token
+async function getSheetsToken(c) {
+  // Option 1: Service Account JWT (sheet stays private, recommended)
+  if (c.sheets.sa_email && c.sheets.sa_key) {
+    return await getServiceAccountToken(
+      c.sheets.sa_email,
+      c.sheets.sa_key,
+      'https://www.googleapis.com/auth/spreadsheets.readonly'
+    );
+  }
+  // Option 2: reuse existing Google OAuth token (user must add spreadsheets scope)
+  if (c.google.refresh_token) {
+    return await getGoogleAccessToken(c);
+  }
+  throw new Error('Google Sheets: нет credentials. Настройте Service Account или Google OAuth.');
+}
+
+// Minimal Service Account JWT without extra libraries
+async function getServiceAccountToken(email, privateKeyRaw, scope) {
+  const crypto = require('crypto');
+  const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+
+  const now   = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss: email, scope, aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600, iat: now,
+  };
+
+  const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify(claim)).toString('base64url');
+  const signing = `${header}.${payload}`;
+  const sign    = crypto.createSign('RSA-SHA256');
+  sign.update(signing);
+  const sig = sign.sign(privateKey, 'base64url');
+  const jwt = `${signing}.${sig}`;
+
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+  });
+  const d = await r.json();
+  if (!d.access_token) throw new Error('Service Account auth failed: ' + (d.error_description || d.error || JSON.stringify(d)));
+  return d.access_token;
+}
+
+// Parse a Google Sheets row into a mediaplan record
+function parseSheetRow(headers, cols, idx) {
+  const g = key => {
+    const i = headers.findIndex(h => h.toLowerCase().includes(key.toLowerCase()));
+    return i >= 0 ? (cols[i] || '').trim() : '';
+  };
+
+  // Status mapping
+  const stMap = {
+    'активна': 'active', 'active': 'active', 'активно': 'active',
+    'запланирован': 'planned', 'planned': 'planned', 'plan': 'planned',
+    'пауза': 'paused', 'paused': 'paused',
+    'завершена': 'ended', 'ended': 'ended', 'done': 'ended',
+  };
+  const rawStatus = g('status') || g('статус') || '';
+  const status = stMap[rawStatus.toLowerCase()] || 'planned';
+
+  const budgetPlan = parseInt((g('план') || g('budget plan') || g('бюджет план') || '0').replace(/\D/g, '')) || 0;
+  const budgetFact = parseInt((g('факт') || g('budget fact') || g('бюджет факт') || '0').replace(/\D/g, '')) || 0;
+  const leadsPlan  = parseInt((g('лиды план') || g('leads plan') || '0').replace(/\D/g, '')) || 0;
+  const leadsFact  = parseInt((g('лиды факт') || g('leads fact') || '0').replace(/\D/g, '')) || 0;
+
+  // Date parsing
+  const parseDate = s => { if(!s) return null; const d = new Date(s); return isNaN(d) ? null : d; };
+
+  return {
+    id:          `SH${String(idx).padStart(4, '0')}`,
+    source_row:  idx,
+    project:     g('проект') || g('project') || g('ивент') || g('event') || '',
+    platform:    g('платформ') || g('platform') || '',
+    geo:         g('geo') || g('геог') || g('geography') || 'EU',
+    campaign:    g('кампания') || g('campaign') || '',
+    format:      g('формат') || g('format') || g('ad format') || '',
+    target:      g('target') || g('цел') || '',
+    owner:       g('owner') || g('владелец') || '',
+    audience:    g('аудитор') || g('audience') || 'All',
+    status,
+    startDate:   parseDate(g('start') || g('старт') || g('дата')),
+    endDate:     parseDate(g('end')   || g('конец')),
+    budgetPlan, budgetFact, leadsPlan, leadsFact,
+    cpl:         leadsFact > 0 ? Math.round(budgetFact / leadsFact) : 0,
+    comment:     g('комментарий') || g('comment') || g('notes') || '',
+    _from_sheets: true,
+  };
+}
+
+// GET /api/sheets/test — verify connection
+app.get('/api/sheets/test', async (req, res) => {
+  const c = getCreds();
+  const sheetId = c.sheets.spreadsheet_id || req.query.spreadsheet_id;
+  if (!sheetId) return res.json({ ok: false, error: 'Не задан CRED__SHEETS__SPREADSHEET_ID' });
+
+  try {
+    const token = await getSheetsToken(c);
+    const r = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=properties.title,sheets.properties`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    if (!r.ok) return res.json({ ok: false, error: d.error?.message || `HTTP ${r.status}` });
+
+    const sheets = (d.sheets || []).map(s => ({
+      name: s.properties?.title,
+      gid:  s.properties?.sheetId,
+      rows: s.properties?.gridProperties?.rowCount,
+    }));
+    res.json({ ok: true, title: d.properties?.title, sheets, hint: `Найдено ${sheets.length} листов: ${sheets.map(s=>s.name).join(', ')}` });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/sheets/mediaplan — fetch and parse media plan rows
+app.get('/api/sheets/mediaplan', async (req, res) => {
+  const c = getCreds();
+  const sheetId  = c.sheets.spreadsheet_id || req.query.spreadsheet_id;
+  const sheetGid = c.sheets.sheet_gid      || req.query.gid || '0';
+  const rangeName= req.query.range || c.sheets.sheet_name || 'Sheet1';
+
+  if (!sheetId) return res.status(400).json({ error: 'Не задан CRED__SHEETS__SPREADSHEET_ID' });
+
+  try {
+    const token = await getSheetsToken(c);
+
+    // First get sheet name by GID if gid provided
+    let range = rangeName;
+    if (sheetGid && sheetGid !== '0') {
+      const metaR = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const meta = await metaR.json();
+      const sheet = (meta.sheets||[]).find(s => String(s.properties?.sheetId) === String(sheetGid));
+      if (sheet) range = sheet.properties.title;
+    }
+
+    const r = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: d.error?.message || `HTTP ${r.status}` });
+
+    const [headerRow, ...dataRows] = d.values || [];
+    if (!headerRow) return res.json({ rows: [], warning: 'Лист пустой' });
+
+    const rows = dataRows
+      .filter(row => row.some(c => c?.trim()))   // skip empty rows
+      .map((row, i) => parseSheetRow(headerRow, row, i + 2));
+
+    res.json({ rows, total: rows.length, sheet: range, synced_at: new Date().toISOString() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/sheets/mediaplan/public — no-auth version via CSV export (sheet must be public)
+app.get('/api/sheets/mediaplan/public', async (req, res) => {
+  const c = getCreds();
+  const sheetId = c.sheets.spreadsheet_id || req.query.spreadsheet_id;
+  const gid     = c.sheets.sheet_gid      || req.query.gid || '0';
+  if (!sheetId) return res.status(400).json({ error: 'Не задан spreadsheet_id' });
+
+  try {
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    const r = await fetch(csvUrl, { redirect: 'follow' });
+    if (!r.ok) return res.status(r.status).json({ error: `HTTP ${r.status} — убедитесь что таблица открыта для просмотра по ссылке` });
+
+    const text = await r.text();
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return res.json({ rows: [], warning: 'Нет данных' });
+
+    const parseCSVLine = line => {
+      const result = []; let cur = ''; let inQuote = false;
+      for (const ch of line) {
+        if (ch === '"') { inQuote = !inQuote; }
+        else if (ch === ',' && !inQuote) { result.push(cur.trim()); cur = ''; }
+        else cur += ch;
+      }
+      result.push(cur.trim());
+      return result;
+    };
+
+    const headers = parseCSVLine(lines[0]);
+    const rows = lines.slice(1)
+      .filter(l => l.trim())
+      .map((l, i) => parseSheetRow(headers, parseCSVLine(l), i + 2));
+
+    res.json({ rows, total: rows.length, synced_at: new Date().toISOString(), method: 'public_csv' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Mediaplan sync (Sheets + Bitrix UTM matching) ─────────────────────────────
+// POST /api/mediaplan/sync
+// 1. Fetches plan rows from Google Sheets
+// 2. Fetches leads from Bitrix24
+// 3. Matches leads to plan rows by UTM params
+// 4. Returns merged rows with fact data filled in
+app.get('/api/mediaplan/sync', async (req, res) => {
+  const c = getCreds();
+  const sheetId = c.sheets.spreadsheet_id || req.query.spreadsheet_id;
+  const gid     = c.sheets.sheet_gid      || req.query.gid;
+  const result  = { planRows: [], leadsMatched: 0, errors: [], synced_at: new Date().toISOString() };
+
+  // Step 1: fetch plan from Sheets
+  let planRows = [];
+  if (sheetId) {
+    try {
+      const usePublic = !c.sheets.sa_email && !c.google.refresh_token;
+      const endpoint  = usePublic
+        ? `/api/sheets/mediaplan/public?spreadsheet_id=${sheetId}&gid=${gid||'0'}`
+        : `/api/sheets/mediaplan?spreadsheet_id=${sheetId}&gid=${gid||'0'}`;
+      // Direct function call to avoid internal HTTP
+      const sheetReq = { query: { spreadsheet_id: sheetId, gid: gid||'0', range: c.sheets.sheet_name||'Sheet1' } };
+      const sheetRes = { rows: null };
+      // Call parseSheetRow directly using sheets API
+      const token = usePublic ? null : await getSheetsToken(c).catch(()=>null);
+      if (!usePublic && token) {
+        const shRange = c.sheets.sheet_name || 'Sheet1';
+        const r = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(shRange)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const d = await r.json();
+        if (r.ok && d.values?.length > 1) {
+          const [hdr, ...rows] = d.values;
+          planRows = rows.filter(r=>r.some(c=>c?.trim())).map((r,i)=>parseSheetRow(hdr,r,i+2));
+        } else {
+          result.errors.push('Sheets: ' + (d.error?.message || 'нет данных'));
+        }
+      } else {
+        // public CSV fallback
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid||'0'}`;
+        const r = await fetch(csvUrl, { redirect: 'follow' });
+        if (r.ok) {
+          const text = await r.text();
+          const lines = text.trim().split('\n');
+          if (lines.length > 1) {
+            const parseCSVLine = line => {
+              const res2=[]; let cur=''; let inQ=false;
+              for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){res2.push(cur.trim());cur='';}else cur+=ch;}
+              res2.push(cur.trim()); return res2;
+            };
+            const hdr = parseCSVLine(lines[0]);
+            planRows = lines.slice(1).filter(l=>l.trim()).map((l,i)=>parseSheetRow(hdr,parseCSVLine(l),i+2));
+          }
+        } else {
+          result.errors.push(`Sheets CSV: HTTP ${r.status}`);
+        }
+      }
+    } catch (e) {
+      result.errors.push('Sheets error: ' + e.message);
+    }
+  }
+
+  // Step 2: fetch Bitrix24 leads for UTM matching
+  let b24Leads = [];
+  if (c.bitrix24.webhook) {
+    try {
+      const leadResult = await b24call(c.bitrix24.webhook, 'crm.lead.list', {
+        order: { DATE_CREATE: 'DESC' }, filter: {},
+        select: ['ID','STATUS_ID','SOURCE_ID','UTM_SOURCE','UTM_MEDIUM',
+                 'UTM_CAMPAIGN','UTM_TERM','DATE_CREATE','OPPORTUNITY'],
+        limit: 500,
+      });
+      b24Leads = Array.isArray(leadResult) ? leadResult : (leadResult?.items || []);
+    } catch (e) {
+      result.errors.push('Bitrix24 leads: ' + e.message);
+    }
+    // Also fetch deals
+    try {
+      const dealResult = await b24call(c.bitrix24.webhook, 'crm.deal.list', {
+        order: { DATE_CREATE: 'DESC' }, filter: {},
+        select: ['ID','STAGE_ID','SOURCE_ID','UTM_SOURCE','UTM_MEDIUM',
+                 'UTM_CAMPAIGN','UTM_TERM','DATE_CREATE','OPPORTUNITY'],
+        limit: 500,
+      });
+      const deals = Array.isArray(dealResult) ? dealResult : (dealResult?.items || []);
+      b24Leads = b24Leads.concat(deals);
+    } catch (e) {
+      result.errors.push('Bitrix24 deals: ' + e.message);
+    }
+  }
+
+  // Step 3: UTM matching
+  // Match B24 items to plan rows by utm_campaign ≈ campaign name
+  // and utm_source ≈ platform/channel
+  if (planRows.length && b24Leads.length) {
+    const normalize = s => (s||'').toLowerCase().replace(/[\s_\-\.]/g,'');
+
+    // Build platform→utm_source mapping
+    const platToSource = {
+      'linkedin': 'linkedin', 'linkedin o&g': 'linkedin', 'linkedin pharma': 'linkedin',
+      'linkedin chemical': 'linkedin', 'telegram': 'telegram', 'яндекс.директ': 'yandex',
+      'direct': 'yandex', 'google ads': 'google', 'email': 'email',
+    };
+
+    planRows = planRows.map(row => {
+      const campNorm = normalize(row.campaign);
+      const projNorm = normalize(row.project);
+      const platNorm = normalize(row.platform);
+      const platSrc  = platToSource[platNorm] || '';
+
+      const matched = b24Leads.filter(l => {
+        const utmCamp = normalize(l.UTM_CAMPAIGN || '');
+        const utmSrc  = normalize(l.UTM_SOURCE   || '');
+        const utmMed  = normalize(l.UTM_MEDIUM   || '');
+
+        // Match by campaign name (fuzzy)
+        const campMatch = campNorm && utmCamp && (
+          utmCamp.includes(campNorm) || campNorm.includes(utmCamp) ||
+          normalize(l.UTM_TERM||'').includes(projNorm) || utmCamp.includes(projNorm)
+        );
+        // Match by platform/source
+        const srcMatch  = !platSrc || utmSrc.includes(platSrc) || utmMed.includes(platSrc);
+
+        return campMatch && srcMatch;
+      });
+
+      if (matched.length) {
+        result.leadsMatched += matched.length;
+        const spend = matched.reduce((a,l)=>a + (parseFloat(l.OPPORTUNITY)||0), 0);
+        return {
+          ...row,
+          leadsFact:  matched.length,
+          budgetFact: spend > 0 ? Math.round(spend) : row.budgetFact,
+          cpl:        matched.length > 0 ? Math.round((spend||row.budgetFact) / matched.length) : row.cpl,
+          _matched_utms: [...new Set(matched.map(l=>l.UTM_CAMPAIGN).filter(Boolean))],
+        };
+      }
+      return row;
+    });
+  }
+
+  result.planRows = planRows;
+  result.plan_total = planRows.length;
+  result.b24_total  = b24Leads.length;
+  res.json(result);
 });
 
 // ── Bitrix24 ──────────────────────────────────────────────────────────────────
