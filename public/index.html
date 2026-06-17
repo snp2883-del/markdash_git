@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BGS.MarkDash — Marketing Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -974,7 +975,7 @@ input:focus,select:focus,textarea:focus{
     <div class="field"><label>Логин</label><input type="text" id="li" placeholder="admin" autocomplete="username"></div>
     <div class="field"><label>Пароль</label><input type="password" id="lp" placeholder="••••••••" autocomplete="current-password"></div>
     <button class="lbtn" onclick="doLogin()">Войти →</button>
-    <div class="lhint" style="font-size:11px">Демо-доступ: <b>admin</b> / <b>admin123</b></div>
+    <div class="lhint" style="font-size:11px">Демо-доступ: <b>admin</b> / <b>admin123</b><br><span style="color:var(--accent3)">⚠ Смените пароли перед боевым использованием</span></div>
   </div>
 </div>
 
@@ -1224,7 +1225,7 @@ input:focus,select:focus,textarea:focus{
       <div class="camp-topbar">
         <div class="camp-search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="campSearch" placeholder="Поиск по названию, каналу…" oninput="renderCampaigns()">
+          <input type="text" id="campSearch" placeholder="Поиск по названию, каналу…" oninput="campSearchDebounced()">
         </div>
         <select class="dsel" id="campCh" onchange="renderCampaigns()"><option value="ALL">Все каналы</option></select>
         <select class="dsel" id="campStatus" onchange="renderCampaigns()">
@@ -1350,7 +1351,7 @@ input:focus,select:focus,textarea:focus{
       <div class="lt-toolbar">
         <div class="lt-search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="ltSearch" placeholder="Поиск по имени, email, каналу, UTM…" oninput="ltFilter()">
+          <input type="text" id="ltSearch" placeholder="Поиск по имени, email, каналу, UTM…" oninput="ltFilterDebounced()">
           <button id="ltSearchClear" onclick="ltClearSearch()" style="display:none">×</button>
         </div>
         <div class="lt-filters">
@@ -1754,7 +1755,7 @@ document.getElementById('li').addEventListener('keydown',e=>{if(e.key==='Enter')
 // ══ DATA ══════════════════════════════════════════════
 const CHANNELS=['Organic','Paid Search','Social','Email','Direct','Referral'];
 const CH_ICONS=['🔍','💰','📱','📧','🔗','🌐'];
-const PALETTE=['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9'];
+let PALETTE=['#c8102e','#1e6db5','#2196a8','#f0a500','#e04a1f','#5b8dd9'];
 const SPENDS=[0,4200,800,200,0,100]; // base spend per channel
 
 function genData(days,fromDate=null){
@@ -1825,10 +1826,8 @@ function initDashboard(){
   showKpiSkeleton();
   setTimeout(()=>{
     if(!hadSnapshot) rawData = genData(drDays);
-    renderAll();
-    renderSources();
-    renderLeads();
-    renderCampaigns();
+    renderAll(); // always render overview (default page)
+    // Other pages render lazily on first navigation
   }, hadSnapshot ? 0 : 200);
   fetchAllSources();
 }
@@ -2443,10 +2442,9 @@ function initCampaigns(){
 function saveCampaignsDB(){ lsSet('campaigns_db', campaignsDB); }
 
 function populateCampSelect(){
-  ['campCh','cmChannel'].forEach(selId=>{
+  ['campCh','cmChannel','leadsCh'].forEach(selId=>{
     const el=document.getElementById(selId); if(!el) return;
-    // only add if not already populated
-    if(el.options.length > 1) return;
+    if(el.options.length > 1) return; // already populated
     CHANNELS.forEach(ch=>{
       const o=document.createElement('option');
       o.value=ch; o.textContent=ch;
@@ -2682,7 +2680,7 @@ function renderCampHistory(camp){
       <div class="camp-hist-body">
         <div class="camp-hist-title">${h.note}${h.user?' · <span style="color:var(--muted);font-size:11px">'+h.user+'</span>':''}</div>
         ${h.diff?`<div class="camp-hist-diff" style="color:var(--accent)">${h.diff}</div>`:''}
-        <div class="camp-hist-meta">${new Date(h.date).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="camp-hist-meta">${new Date(h.date||Date.now()).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
       </div>
     </div>`).join('');
 }
@@ -3020,8 +3018,11 @@ async function testPlatform(key){
   if(!HAS_BACKEND){ showToast('Бэкенд не запущен','error'); return; }
   if(st){ st.textContent = 'Проверка…'; st.className = 'conn-status'; }
   if(pst) pst.textContent = '';
+  // Show spinner on button
+  const testBtn = document.querySelector('#pacc_'+key+' .btn.sm');
+  if(testBtn){ testBtn.disabled=true; testBtn.textContent='…'; }
 
-  // Collect any token values typed in the fields (for one-time test without saving)
+  // Collect token values from input fields (one-time test, no saving needed)
   const fieldVals = {};
   if(p.fields){
     p.fields.forEach(f => {
@@ -3031,8 +3032,6 @@ async function testPlatform(key){
   }
 
   try{
-    // Pass field values as query params so server can use them for testing
-    // even if they haven't been saved to env vars yet
     const qs = Object.keys(fieldVals).length
       ? '?'+new URLSearchParams(fieldVals).toString()
       : '';
@@ -3052,6 +3051,9 @@ async function testPlatform(key){
     if(dot) dot.className = 'status-dot red';
     if(st){ st.textContent = '✗ Недоступен'; st.className = 'conn-status err'; }
     showToast('Ошибка запроса: '+e.message,'error');
+  }finally{
+    const btn = document.querySelector('#pacc_'+key+' .btn.sm');
+    if(btn){ btn.disabled=false; btn.textContent='Проверить'; }
   }
 }
 
@@ -3111,6 +3113,7 @@ async function fetchAllSources(){
     const qs = `?days=${drDays}`;
     const d = await backendGet('/api/data/all'+qs);
     if(d.rows && d.rows.length > 0){
+      // Replace all data (including demo) with real data from backend
       rawData = d.rows;
       renderAll(); renderSources(); renderLeads();
       showToast(`Данные загружены: ${d.total} строк`,'success');
@@ -3218,6 +3221,11 @@ function initLeadsTable(){
 function saveLeadsDB(){ lsSet('leads_db', leadsDB); }
 
 // ── filter + sort + paginate ──────────────────────────
+// Debounced wrappers for search inputs
+let _ltDebTimer, _campDebTimer;
+function ltFilterDebounced(){ clearTimeout(_ltDebTimer); _ltDebTimer=setTimeout(ltFilter,220); }
+function campSearchDebounced(){ clearTimeout(_campDebTimer); _campDebTimer=setTimeout(renderCampaigns,220); }
+
 function ltFilter(){
   const q   = (document.getElementById('ltSearch')?.value||'').toLowerCase().trim();
   const ch  = document.getElementById('ltFCh')?.value||'';
@@ -3427,7 +3435,7 @@ function renderLeadHistory(lead){
       <div class="lm-tl-dot" style="background:${stColors[h.status]||'#7a809a'}">${(ST_LABELS[h.status]||'?')[0]}</div>
       <div class="lm-tl-body">
         <div class="lm-tl-title">${ST_LABELS[h.status]||h.status}${h.note?' — '+h.note:''}</div>
-        <div class="lm-tl-time">${new Date(h.date).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="lm-tl-time">${new Date(h.date||Date.now()).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
       </div>
     </li>`).join('')}</ul>`;
 }
@@ -3439,7 +3447,7 @@ function renderLeadComments(lead){
     <div class="lm-comment">
       <div class="lm-comment-meta">
         <span class="lm-comment-author">${c.author}</span>
-        <span class="lm-comment-time">${new Date(c.date).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+        <span class="lm-comment-time">${new Date(c.date||Date.now()).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
       </div>
       <div class="lm-comment-text">${c.text}</div>
     </div>`).join('');
