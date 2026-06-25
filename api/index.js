@@ -17,6 +17,12 @@ const express   = require('express');
 const fetch     = require('node-fetch');
 const cors      = require('cors');
 const path      = require('path');
+const jwt       = require('jsonwebtoken');
+const bcrypt    = require('bcryptjs');
+const crypto    = require('crypto');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'bgs-markdash-dev-secret-CHANGE-IN-PRODUCTION';
+const JWT_TTL    = process.env.JWT_TTL    || '8h';
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -776,7 +782,244 @@ app.get('/api/data/all', async (req, res) => {
   res.json({ rows: allRows, errors: errors.length ? errors : undefined, from, to, total: allRows.length });
 });
 
-// ── Google Sheets ─────────────────────────────────────────────────────────────
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+// Default users (used when no USERS env var set)
+// Format: USER__LOGIN__HASH and USER__LOGIN__ROLE
+// Generate hash: node -e "const b=require('bcryptjs');console.log(b.hashSync('password',10))"
+function getUsers() {
+  const users = {};
+  // Scan env vars for USER__ prefix
+  Object.keys(process.env).filter(k => k.startsWith('USER__')).forEach(k => {
+    const [, login, field] = k.split('__');
+    if(!login) return;
+    users[login] = users[login] || {};
+    users[login][field.toLowerCase()] = process.env[k];
+  });
+
+  // If no users configured in env — use default demo users
+  if(Object.keys(users).length === 0){
+    return {
+      admin:     { hash: bcrypt.hashSync('admin123',    10), role: 'admin',     name: 'Администратор' },
+      marketing: { hash: bcrypt.hashSync('market2024',  10), role: 'marketing', name: 'Маркетолог' },
+      analyst:   { hash: bcrypt.hashSync('data456',     10), role: 'analyst',   name: 'Аналитик' },
+    };
+  }
+  return users;
+}
+
+// Middleware: require valid JWT
+function requireAuth(req, res, next){
+  const token = (req.headers.authorization||'').replace('Bearer ','');
+  if(!token) return res.status(401).json({ error: 'Не авторизован' });
+  try{
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  }catch(e){
+    res.status(401).json({ error: 'Токен недействителен или истёк' });
+  }
+}
+
+// Middleware: require admin role
+function requireAdmin(req, res, next){
+  if(req.user?.role !== 'admin') return res.status(403).json({ error: 'Требуются права администратора' });
+  next();
+}
+
+// ── Auth routes ───────────────────────────────────────────────────────────────
+
+// POST /api/auth/login
+app.post('/api/auth/login', async (req, res) => {
+  const { login, password } = req.body || {};
+  if(!login || !password) return res.status(400).json({ error: 'Укажите логин и пароль' });
+
+  const users = getUsers();
+  const user  = users[login.trim().toLowerCase()];
+  if(!user) return res.status(401).json({ error: 'Неверный логин или пароль' });
+
+  const ok = await bcrypt.compare(password, user.hash || '');
+  if(!ok)  return res.status(401).json({ error: 'Неверный логин или пароль' });
+
+  const payload = { login, role: user.role || 'analyst', name: user.name || login };
+  const token   = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_TTL });
+  res.json({ token, user: payload, expiresIn: JWT_TTL });
+});
+
+// POST /api/auth/refresh — extend token if still valid
+app.post('/api/auth/refresh', requireAuth, (req, res) => {
+  const { login, role, name } = req.user;
+  const token = jwt.sign({ login, role, name }, JWT_SECRET, { expiresIn: JWT_TTL });
+  res.json({ token, user: { login, role, name } });
+});
+
+// GET /api/auth/me — get current user info from token
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// ── User management (admin only) ──────────────────────────────────────────────
+
+// GET /api/users — list users (without hashes)
+app.get('/api/users', requireAuth, requireAdmin, (req, res) => {
+  const users = getUsers();
+  const list  = Object.entries(users).map(([login, u]) => ({
+    login,
+    role:  u.role  || 'analyst',
+    name:  u.name  || login,
+    // Don't expose hash
+  }));
+  res.json({ users: list });
+});
+
+// POST /api/users — create or update user (admin only)
+// On Vercel: returns instructions since we can't write env vars at runtime
+app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
+  const { login, password, role, name } = req.body || {};
+  if(!login || !password) return res.status(400).json({ error: 'Укажите login и password' });
+
+  const hash = await bcrypt.hash(password, 10);
+  const envVarInstructions = {
+    ok: false,
+    vercel_note: 'На Vercel пользователи задаются через Environment Variables.',
+    add_these: {
+      [`USER__${login.toUpperCase()}__HASH`]: hash,
+      [`USER__${login.toUpperCase()}__ROLE`]: role || 'analyst',
+      [`USER__${login.toUpperCase()}__NAME`]: name || login,
+    },
+    instructions: 'Скопируйте эти переменные в Vercel → Settings → Environment Variables → Redeploy',
+  };
+  res.json(envVarInstructions);
+});
+
+// DELETE /api/users/:login — remove user
+app.delete('/api/users/:login', requireAuth, requireAdmin, (req, res) => {
+  res.json({
+    ok: false,
+    vercel_note: 'Удалите переменные USER__' + req.params.login.toUpperCase() + '__* из Vercel Environment Variables и сделайте Redeploy.',
+  });
+});
+
+// ── Telegram Bot Notifications ────────────────────────────────────────────────
+
+function getTelegramCreds(){
+  return {
+    bot_token: process.env.CRED__TELEGRAM__BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '',
+    chat_id:   process.env.CRED__TELEGRAM__CHAT_ID   || process.env.TELEGRAM_CHAT_ID   || '',
+  };
+}
+
+async function sendTelegram(text){
+  const tg = getTelegramCreds();
+  if(!tg.bot_token || !tg.chat_id) return { ok: false, error: 'Telegram не настроен' };
+  const r = await fetch(`https://api.telegram.org/bot${tg.bot_token}/sendMessage`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      chat_id:    tg.chat_id,
+      text,
+      parse_mode: 'HTML',
+    }),
+  });
+  const d = await r.json();
+  return d.ok ? { ok: true } : { ok: false, error: d.description };
+}
+
+// GET /api/telegram/test — send test message
+app.get('/api/telegram/test', async (req, res) => {
+  const tg = getTelegramCreds();
+  if(!tg.bot_token || !tg.chat_id)
+    return res.json({ ok: false, error: 'Задайте CRED__TELEGRAM__BOT_TOKEN и CRED__TELEGRAM__CHAT_ID' });
+  const result = await sendTelegram(
+    `✅ <b>BGS.MarkDash</b>\n\nПодключение к Telegram работает!\nВремя: ${new Date().toLocaleString('ru-RU')}`
+  );
+  res.json(result);
+});
+
+// POST /api/telegram/alert — send custom alert
+app.post('/api/telegram/alert', async (req, res) => {
+  const { level, title, text, project } = req.body || {};
+  const icons = { crit:'🔴', warn:'🟡', info:'ℹ️', success:'✅' };
+  const icon  = icons[level] || '📊';
+  const msg = [
+    `${icon} <b>BGS.MarkDash</b>${project ? ` — ${project}` : ''}`,
+    `<b>${title||'Уведомление'}</b>`,
+    text || '',
+    `\n<i>${new Date().toLocaleString('ru-RU')}</i>`,
+  ].filter(Boolean).join('\n');
+  const result = await sendTelegram(msg);
+  res.json(result);
+});
+
+// POST /api/telegram/report — daily summary
+app.post('/api/telegram/report', async (req, res) => {
+  const { summary } = req.body || {};
+  const msg = [
+    `📊 <b>BGS.MarkDash — Ежедневный отчёт</b>`,
+    summary ? summary : 'Данные за сегодня:',
+    `\n<i>${new Date().toLocaleString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}</i>`,
+  ].join('\n');
+  const result = await sendTelegram(msg);
+  res.json(result);
+});
+
+// ── Vercel Cron — auto-sync ───────────────────────────────────────────────────
+// Called by Vercel Cron every hour (configured in vercel.json)
+// GET /api/cron/sync
+app.get('/api/cron/sync', async (req, res) => {
+  // Verify this is called by Vercel cron (not public)
+  const cronSecret = process.env.CRON_SECRET || '';
+  const authHeader = req.headers.authorization || '';
+  if(cronSecret && authHeader !== `Bearer ${cronSecret}`)
+    return res.status(401).json({ error: 'Unauthorized cron call' });
+
+  const c = getCreds();
+  const results = { synced_at: new Date().toISOString(), sources: [] };
+
+  // 1. Sync Google Sheets mediaplan
+  if(c.sheets.spreadsheet_id){
+    try{
+      const usePublic = !c.sheets.sa_email && !c.google.refresh_token;
+      let rows = [];
+      if(!usePublic){
+        const token = await getSheetsToken(c);
+        const range = c.sheets.sheet_name || 'Sheet1';
+        const r = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${c.sheets.spreadsheet_id}/values/${encodeURIComponent(range)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const d = await r.json();
+        if(r.ok && d.values?.length > 1){
+          const [hdr, ...data] = d.values;
+          rows = data.filter(r=>r.some(c=>c?.trim())).map((r,i)=>parseSheetRow(hdr,r,i+2));
+        }
+      } else {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${c.sheets.spreadsheet_id}/export?format=csv&gid=${c.sheets.sheet_gid||'0'}`;
+        const r = await fetch(csvUrl, { redirect: 'follow' });
+        if(r.ok){
+          const lines = (await r.text()).trim().split('\n');
+          if(lines.length > 1){
+            const pl = line => {const res=[]; let cur=''; let q=false; for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){res.push(cur.trim());cur='';}else cur+=ch;} res.push(cur.trim()); return res;};
+            const hdr = pl(lines[0]);
+            rows = lines.slice(1).filter(l=>l.trim()).map((l,i)=>parseSheetRow(hdr,pl(l),i+2));
+          }
+        }
+      }
+      results.sources.push({ source: 'google_sheets', rows: rows.length, ok: rows.length > 0 });
+    }catch(e){
+      results.sources.push({ source: 'google_sheets', ok: false, error: e.message });
+    }
+  }
+
+  // 2. Notify via Telegram if configured
+  if(results.sources.some(s=>s.ok)){
+    const summary = results.sources.filter(s=>s.ok).map(s=>`• ${s.source}: ${s.rows||0} строк`).join('\n');
+    await sendTelegram(`🔄 <b>BGS.MarkDash — Авто-синхронизация</b>\n\n${summary}\n\n<i>${results.synced_at}</i>`).catch(()=>{});
+  }
+
+  res.json(results);
+});
+
+// ── Add Telegram to health ────────────────────────────────────────────────────
 
 // Get access token — supports Service Account (JWT) and OAuth refresh token
 async function getSheetsToken(c) {
