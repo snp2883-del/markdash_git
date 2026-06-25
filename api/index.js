@@ -1041,7 +1041,21 @@ async function getSheetsToken(c) {
 // Minimal Service Account JWT without extra libraries
 async function getServiceAccountToken(email, privateKeyRaw, scope) {
   const crypto = require('crypto');
-  const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+  // Handle various ways the key may be stored:
+  // - literal \n (from env var)
+  // - actual newlines
+  // - \\n (double escaped)
+  let privateKey = privateKeyRaw
+    .replace(/\\\\n/g, '\n')  // double escaped first
+    .replace(/\\n/g,   '\n')  // then single escaped
+    .trim();
+
+  // Ensure proper PEM structure if newlines missing
+  if (!privateKey.includes('\n')) {
+    privateKey = privateKey
+      .replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n')
+      .replace('-----END PRIVATE KEY-----',   '\n-----END PRIVATE KEY-----');
+  }
 
   const now   = Math.floor(Date.now() / 1000);
   const claim = {
@@ -1055,15 +1069,15 @@ async function getServiceAccountToken(email, privateKeyRaw, scope) {
   const sign    = crypto.createSign('RSA-SHA256');
   sign.update(signing);
   const sig = sign.sign(privateKey, 'base64url');
-  const jwt = `${signing}.${sig}`;
+  const jwtToken = `${signing}.${sig}`;
 
   const r = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwtToken }),
   });
   const d = await r.json();
-  if (!d.access_token) throw new Error('Service Account auth failed: ' + (d.error_description || d.error || JSON.stringify(d)));
+  if (!d.access_token) throw new Error('Service Account: ' + (d.error_description || d.error || JSON.stringify(d)));
   return d.access_token;
 }
 
@@ -1114,26 +1128,54 @@ function parseSheetRow(headers, cols, idx) {
 }
 
 // GET /api/sheets/test — verify connection
+// Accepts SA creds from query params for one-time UI test
 app.get('/api/sheets/test', async (req, res) => {
   const c = getCreds();
-  const sheetId = c.sheets.spreadsheet_id || req.query.spreadsheet_id;
-  if (!sheetId) return res.json({ ok: false, error: 'Не задан CRED__SHEETS__SPREADSHEET_ID' });
+  const sheetId  = req.query.spreadsheet_id  || c.sheets.spreadsheet_id;
+  const saEmail  = req.query.sa_email        || c.sheets.sa_email;
+  const saKey    = req.query.sa_key          || c.sheets.sa_key;
+
+  if (!sheetId) return res.json({ ok: false, error: 'Не задан ID таблицы (CRED__SHEETS__SPREADSHEET_ID)' });
+
+  // Build effective creds (query params override env vars for test)
+  const testCreds = {
+    ...c,
+    sheets: { ...c.sheets, spreadsheet_id: sheetId, sa_email: saEmail||c.sheets.sa_email, sa_key: saKey||c.sheets.sa_key },
+  };
 
   try {
-    const token = await getSheetsToken(c);
+    let token;
+    try {
+      token = await getSheetsToken(testCreds);
+    } catch(authErr) {
+      // If SA fails, try public access (no auth)
+      const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
+      const pubR   = await fetch(pubUrl, { redirect: 'follow' });
+      if (pubR.ok) {
+        return res.json({ ok: true, hint: 'Таблица доступна публично (без авторизации)', method: 'public' });
+      }
+      return res.json({ ok: false, error: `Auth failed: ${authErr.message}. Проверьте SA Email и Private Key, или сделайте таблицу публичной.` });
+    }
+
     const r = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=properties.title,sheets.properties`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     const d = await r.json();
-    if (!r.ok) return res.json({ ok: false, error: d.error?.message || `HTTP ${r.status}` });
+    if (!r.ok) {
+      const msg = d.error?.message || `HTTP ${r.status}`;
+      const hint = r.status === 403
+        ? ' — Выдайте доступ сервисному аккаунту к таблице: Поделиться → добавить email SA как Читатель'
+        : '';
+      return res.json({ ok: false, error: msg + hint });
+    }
 
     const sheets = (d.sheets || []).map(s => ({
       name: s.properties?.title,
       gid:  s.properties?.sheetId,
       rows: s.properties?.gridProperties?.rowCount,
     }));
-    res.json({ ok: true, title: d.properties?.title, sheets, hint: `Найдено ${sheets.length} листов: ${sheets.map(s=>s.name).join(', ')}` });
+    res.json({ ok: true, title: d.properties?.title, sheets, hint: `✓ Доступ подтверждён. Листы: ${sheets.map(s=>`"${s.name}" (GID: ${s.gid})`).join(', ')}` });
   } catch (e) {
     res.json({ ok: false, error: e.message });
   }
