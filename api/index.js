@@ -990,7 +990,7 @@ app.get('/api/cron/sync', async (req, res) => {
         const d = await r.json();
         if(r.ok && d.values?.length > 1){
           const [hdr, ...data] = d.values;
-          rows = data.filter(r=>r.some(c=>c?.trim())).map((r,i)=>parseSheetRow(hdr,r,i+2));
+          rows = data.filter(r=>r.some(c=>c?.trim())).map((r,i)=>parseSheetRow(hdr,r,i+2)).filter(Boolean);
         }
       } else {
         const csvUrl = `https://docs.google.com/spreadsheets/d/${c.sheets.spreadsheet_id}/export?format=csv&gid=${c.sheets.sheet_gid||'0'}`;
@@ -1082,48 +1082,114 @@ async function getServiceAccountToken(email, privateKeyRaw, scope) {
 }
 
 // Parse a Google Sheets row into a mediaplan record
+// Supports both generic keyword search AND BGS-specific column names
 function parseSheetRow(headers, cols, idx) {
+  // Normalize headers for lookup
+  const hdrNorm = headers.map(h => (h||'').trim().toLowerCase());
   const g = key => {
-    const i = headers.findIndex(h => h.toLowerCase().includes(key.toLowerCase()));
+    const k = key.toLowerCase();
+    const i = hdrNorm.findIndex(h => h === k || h.includes(k));
+    return i >= 0 ? (cols[i] || '').trim() : '';
+  };
+  // Exact column match (priority over keyword)
+  const exact = key => {
+    const k = key.toLowerCase();
+    const i = hdrNorm.findIndex(h => h === k);
     return i >= 0 ? (cols[i] || '').trim() : '';
   };
 
-  // Status mapping
+  // ── Key fields ────────────────────────────────────────
+  const project  = exact('project')  || g('проект')  || g('event') || g('ивент') || '';
+  const platform = exact('platform') || g('платформ') || '';
+  const campaign = exact('campaign') || g('кампания') || '';
+  const target   = exact('target')   || g('цел')      || '';
+  const audience = exact('audience') || g('аудитор')  || 'All';
+
+  // ── Skip completely empty rows ─────────────────────────
+  // Empty = no project AND no platform AND no campaign
+  if (!project && !platform && !campaign) return null;
+
+  // ── Geo: detect from platform if no explicit column ───
+  let geo = exact('geo') || g('геог') || g('geography') || '';
+  if (!geo) {
+    // LinkedIn = EU, Яндекс/Direct = RUS, Telegram = RUS
+    const pl = platform.toLowerCase();
+    if      (pl.includes('linkedin'))                          geo = 'EU';
+    else if (pl.includes('яндекс') || pl.includes('direct'))  geo = 'RUS';
+    else if (pl.includes('telegram'))                         geo = 'RUS';
+    else if (pl.includes('google'))                           geo = 'EU';
+    else                                                       geo = g('geo') || 'EU';
+  }
+
+  // ── Owner: not in this table structure — leave empty ──
+  const owner    = exact('owner')  || g('владелец') || g('owner') || '';
+  const format   = exact('format') || g('формат')   || g('ad format') || '';
+
+  // ── Status: use last boolean column or "status" column ─
+  // In BGS table: last column has TRUE/FALSE — TRUE=active/planned
+  const statusCol = exact('status') || g('статус') || '';
+  // Check boolean last column (the final column in the row)
+  const lastCol   = (cols[cols.length - 1] || '').trim().toUpperCase();
+  const isEnabled = lastCol === 'TRUE' || lastCol === '1' || lastCol.toLowerCase() === 'да';
   const stMap = {
-    'активна': 'active', 'active': 'active', 'активно': 'active',
-    'запланирован': 'planned', 'planned': 'planned', 'plan': 'planned',
-    'пауза': 'paused', 'paused': 'paused',
-    'завершена': 'ended', 'ended': 'ended', 'done': 'ended',
+    'активна':'active','active':'active','активно':'active',
+    'запланирован':'planned','planned':'planned','plan':'planned',
+    'пауза':'paused','paused':'paused',
+    'завершена':'ended','ended':'ended','done':'ended',
   };
-  const rawStatus = g('status') || g('статус') || '';
-  const status = stMap[rawStatus.toLowerCase()] || 'planned';
+  let status = stMap[statusCol.toLowerCase()] || 'planned';
+  // If boolean column says FALSE and status not explicitly set → treat as future planned
+  if (!stMap[statusCol.toLowerCase()] && lastCol === 'FALSE') status = 'planned';
 
-  const budgetPlan = parseInt((g('план') || g('budget plan') || g('бюджет план') || '0').replace(/\D/g, '')) || 0;
-  const budgetFact = parseInt((g('факт') || g('budget fact') || g('бюджет факт') || '0').replace(/\D/g, '')) || 0;
-  const leadsPlan  = parseInt((g('лиды план') || g('leads plan') || '0').replace(/\D/g, '')) || 0;
-  const leadsFact  = parseInt((g('лиды факт') || g('leads fact') || '0').replace(/\D/g, '')) || 0;
+  // ── Dates ──────────────────────────────────────────────
+  // BGS columns: "Due date" = start, "End date" = end
+  const parseDate = s => {
+    if (!s) return null;
+    // Handle DD.MM.YYYY format (Russian)
+    const ruMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (ruMatch) {
+      const [, d, m, y] = ruMatch;
+      return new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`);
+    }
+    const d = new Date(s);
+    return isNaN(d) ? null : d;
+  };
 
-  // Date parsing
-  const parseDate = s => { if(!s) return null; const d = new Date(s); return isNaN(d) ? null : d; };
+  // Try various column name patterns for start date
+  const startRaw = exact('due date')  || exact('start date') || exact('start')
+                || g('due') || g('start') || g('старт') || g('дата старта') || '';
+  // End date
+  const endRaw   = exact('end date')  || exact('end') || g('конец') || g('дата окончания') || '';
+
+  // ── Budget & Leads: may not exist in schedule table ───
+  const cleanNum = s => parseInt((s||'').replace(/\s/g,'').replace(',','.').replace(/[^\d]/g,'')) || 0;
+  const budgetPlan = cleanNum(exact('budget plan') || g('бюджет план') || g('план') || '');
+  const budgetFact = cleanNum(exact('budget fact') || g('бюджет факт') || g('факт') || '');
+  const leadsPlan  = cleanNum(exact('leads plan')  || g('лиды план') || '');
+  const leadsFact  = cleanNum(exact('leads fact')  || g('лиды факт') || '');
 
   return {
-    id:          `SH${String(idx).padStart(4, '0')}`,
-    source_row:  idx,
-    project:     g('проект') || g('project') || g('ивент') || g('event') || '',
-    platform:    g('платформ') || g('platform') || '',
-    geo:         g('geo') || g('геог') || g('geography') || 'EU',
-    campaign:    g('кампания') || g('campaign') || '',
-    format:      g('формат') || g('format') || g('ad format') || '',
-    target:      g('target') || g('цел') || '',
-    owner:       g('owner') || g('владелец') || '',
-    audience:    g('аудитор') || g('audience') || 'All',
+    id:           `SH${String(idx).padStart(4, '0')}`,
+    source_row:   idx,
+    project,
+    platform,
+    geo,
+    campaign,
+    format,
+    target,
+    owner,
+    audience,
     status,
-    startDate:   parseDate(g('start') || g('старт') || g('дата')),
-    endDate:     parseDate(g('end')   || g('конец')),
+    startDate:    parseDate(startRaw),
+    endDate:      parseDate(endRaw),
     budgetPlan, budgetFact, leadsPlan, leadsFact,
-    cpl:         leadsFact > 0 ? Math.round(budgetFact / leadsFact) : 0,
-    comment:     g('комментарий') || g('comment') || g('notes') || '',
+    cpl:          leadsFact > 0 ? Math.round(budgetFact / leadsFact) : 0,
+    comment:      exact('comment') || g('комментарий') || g('notes') || '',
     _from_sheets: true,
+    // Extra BGS fields for reference
+    _year:        exact('year')        || g('год') || '',
+    _event_dates: exact('event dates') || g('даты') || '',
+    _duration:    exact('duration (days)') || g('duration') || '',
   };
 }
 
@@ -1217,7 +1283,7 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
 
     const rows = dataRows
       .filter(row => row.some(c => c?.trim()))   // skip empty rows
-      .map((row, i) => parseSheetRow(headerRow, row, i + 2));
+      .map((row, i) => parseSheetRow(headerRow, row, i + 2)).filter(Boolean);
 
     res.json({ rows, total: rows.length, sheet: range, synced_at: new Date().toISOString() });
   } catch (e) {
@@ -1255,7 +1321,7 @@ app.get('/api/sheets/mediaplan/public', async (req, res) => {
     const headers = parseCSVLine(lines[0]);
     const rows = lines.slice(1)
       .filter(l => l.trim())
-      .map((l, i) => parseSheetRow(headers, parseCSVLine(l), i + 2));
+      .map((l, i) => parseSheetRow(headers, parseCSVLine(l), i + 2)).filter(Boolean);
 
     res.json({ rows, total: rows.length, synced_at: new Date().toISOString(), method: 'public_csv' });
   } catch (e) {
@@ -1297,7 +1363,7 @@ app.get('/api/mediaplan/sync', async (req, res) => {
         const d = await r.json();
         if (r.ok && d.values?.length > 1) {
           const [hdr, ...rows] = d.values;
-          planRows = rows.filter(r=>r.some(c=>c?.trim())).map((r,i)=>parseSheetRow(hdr,r,i+2));
+          planRows = rows.filter(r=>r.some(c=>c?.trim())).map((r,i)=>parseSheetRow(hdr,r,i+2)).filter(Boolean);
         } else {
           result.errors.push('Sheets: ' + (d.error?.message || 'нет данных'));
         }
@@ -1315,7 +1381,7 @@ app.get('/api/mediaplan/sync', async (req, res) => {
               res2.push(cur.trim()); return res2;
             };
             const hdr = parseCSVLine(lines[0]);
-            planRows = lines.slice(1).filter(l=>l.trim()).map((l,i)=>parseSheetRow(hdr,parseCSVLine(l),i+2));
+            planRows = lines.slice(1).filter(l=>l.trim()).map((l,i)=>parseSheetRow(hdr,parseCSVLine(l),i+2)).filter(Boolean);
           }
         } else {
           result.errors.push(`Sheets CSV: HTTP ${r.status}`);
