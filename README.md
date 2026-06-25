@@ -1,112 +1,103 @@
-# MarkDash — Marketing Dashboard
+# BGS.MarkDash
 
-Полноценный маркетинговый дашборд с Node.js бэкендом и реальными API-интеграциями.
+Маркетинговый дашборд BGS Group. Проект Клуба Амбассадоров.
 
-## Быстрый старт
+---
 
+## Быстрый деплой на Vercel
+
+### 1. Загрузи на GitHub
 ```bash
-# 1. Распакуйте архив и перейдите в папку
-cd markdash
+unzip markdash.zip && cd markdash
+git init && git add .
+git commit -m "BGS.MarkDash"
+git remote add origin https://github.com/ВАШ_ЮЗЕР/markdash.git
+git push -u origin main
+```
 
-# 2. Установите зависимости
+### 2. Подключи Vercel
+vercel.com → Add New → Project → выбери репозиторий → Framework: **Other** → Deploy
+
+### 3. Environment Variables (Settings → Environment Variables)
+
+#### Обязательные
+| Переменная | Значение |
+|---|---|
+| `JWT_SECRET` | длинная случайная строка |
+| `CRED__BITRIX24__WEBHOOK` | `https://your.bitrix24.ru/rest/1/xxxxx/` |
+| `CRED__BITRIX24__ENTITY_TYPE` | `both` |
+| `CRED__YANDEX_METRICA__TOKEN` | OAuth токен |
+| `CRED__YANDEX_METRICA__COUNTER_ID` | `99208100` |
+
+#### Медиаплан (Google Sheets)
+| Переменная | Значение |
+|---|---|
+| `CRED__SHEETS__SPREADSHEET_ID` | ID таблицы из URL |
+| `CRED__SHEETS__SHEET_GID` | `287894245` |
+| `CRED__SHEETS__SHEET_NAME` | имя листа |
+
+#### Telegram-уведомления
+| Переменная | Значение |
+|---|---|
+| `CRED__TELEGRAM__BOT_TOKEN` | токен от @BotFather |
+| `CRED__TELEGRAM__CHAT_ID` | ID чата |
+
+#### Пользователи (опционально, есть демо-доступ)
+```
+USER__ADMIN__HASH   = bcrypt хэш пароля
+USER__ADMIN__ROLE   = admin
+USER__ADMIN__NAME   = Иван Иванов
+```
+Генерация хэша: `node -e "const b=require('bcryptjs');console.log(b.hashSync('пароль',10))"`
+
+#### Прочие платформы
+```
+CRED__YANDEX_DIRECT__TOKEN
+CRED__GOOGLE__CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN / GA4_PROPERTY_ID
+CRED__LINKEDIN__ACCESS_TOKEN / ACCOUNT_ID
+CRON_SECRET   (защита cron endpoint)
+```
+
+После добавления переменных → **Redeploy**
+
+---
+
+## Демо-доступ (без бэкенда)
+- `admin` / `admin123`
+- `marketing` / `market2024`
+- `analyst` / `data456`
+
+---
+
+## Локальный запуск
+```bash
 npm install
-
-# 3. Создайте файл с переменными окружения
-cp .env.example .env
-
-# 4. Запустите сервер
-npm start
-
-# 5. Откройте в браузере
-open http://localhost:3000
+cp .env.example .env   # заполни токены
+node server/index.js   # → http://localhost:3000
 ```
-
-Логин: **admin** / Пароль: **admin123**
 
 ---
 
-## Настройка API-подключений
-
-После запуска перейдите в **Настройки API** в боковом меню.
-Введите токены в нужных блоках → нажмите **Сохранить** → нажмите **Проверить**.
-
-Токены сохраняются в файл `.credentials.json` на сервере — браузер их никогда не видит.
-
----
-
-## Получение токенов
-
-### Yandex.Metrica + Yandex.Direct
-
-1. Зайдите на [oauth.yandex.ru](https://oauth.yandex.ru)
-2. Создайте приложение или используйте отладочный токен
-3. Нужные права: `metrika:read` (Метрика), `direct:api` (Директ)
-4. Скопируйте токен в настройки дашборда
-
-```
-Метрика: нужен ID счётчика (найдёте в интерфейсе Метрики — число в URL)
-Директ: логин клиента нужен только при работе через агентский аккаунт
-```
-
-### Google Analytics 4 + Google Ads
-
-1. Зайдите в [console.cloud.google.com](https://console.cloud.google.com)
-2. Создайте проект, включите **Google Analytics Data API** и **Google Ads API**
-3. Создайте **OAuth 2.0 Client ID** (тип: Web application)
-4. Добавьте `https://developers.google.com/oauthplayground` в Redirect URIs
-5. Получите refresh_token через [OAuth Playground](https://developers.google.com/oauthplayground):
-   - Шестерёнка → Use your own OAuth credentials → вставьте Client ID и Secret
-   - Выберите скоупы: `https://www.googleapis.com/auth/analytics.readonly` и `https://www.googleapis.com/auth/adwords`
-   - Authorize → Exchange → скопируйте `refresh_token`
-6. GA4 Property ID — числовой ID из интерфейса GA4 (Настройки → Свойство)
-7. Google Ads Developer Token — из аккаунта Google Ads API Center
-
-### LinkedIn Ads
-
-1. Зайдите на [linkedin.com/developers](https://www.linkedin.com/developers/apps)
-2. Создайте приложение, запросите доступ к **Marketing Developer Platform**
-3. Нужные права: `r_ads_reporting`, `r_organization_social`
-4. Получите access_token через OAuth 2.0 (токен живёт 60 дней, нужно обновлять)
-5. Account ID — числовой ID рекламного аккаунта
+## Статус интеграций
+| Платформа | Статус |
+|---|---|
+| Яндекс.Метрика | ✅ Работает |
+| Bitrix24 CRM | ✅ Работает |
+| Google Sheets | ✅ Работает (публичная таблица или Service Account) |
+| Яндекс.Директ | ⏳ Ждёт одобрения заявки |
+| Google Analytics 4 | ⏳ Ждёт токенов |
+| Google Ads | ⏳ Ждёт токенов |
+| LinkedIn Ads | ⏳ Ждёт токенов |
 
 ---
 
-## Структура проекта
-
+## Архитектура
 ```
-markdash/
-├── server/
-│   └── index.js          # Express сервер, прокси к API
-├── public/
-│   └── index.html        # Фронтенд дашборда
-├── .env.example          # Шаблон переменных окружения
-├── .env                  # Ваши реальные переменные (НЕ коммитить в git!)
-├── .credentials.json     # Сохранённые токены (создаётся автоматически, НЕ коммитить!)
-├── package.json
-└── README.md
+public/index.html     — SPA фронтенд (~6750 строк)
+api/index.js          — Vercel Serverless handler (~1470 строк)
+server/index.js       — Локальный Express сервер
+vercel.json           — Routing + Cron (каждый час)
 ```
 
-## API Endpoints
-
-| Метод | URL | Описание |
-|-------|-----|----------|
-| GET | `/api/health` | Статус сервера и настроенных платформ |
-| GET | `/api/credentials` | Маскированные значения токенов |
-| POST | `/api/credentials` | Сохранить токены |
-| GET | `/api/test/:platform` | Проверить подключение |
-| GET | `/api/data/all` | Данные из всех настроенных источников |
-| GET | `/api/data/yandex-metrica` | Данные Yandex.Metrica |
-| GET | `/api/data/yandex-direct` | Данные Yandex.Direct |
-| GET | `/api/data/google-analytics` | Данные Google Analytics 4 |
-| GET | `/api/data/google-ads` | Данные Google Ads |
-| GET | `/api/data/linkedin` | Данные LinkedIn Ads |
-
-Все data-эндпоинты принимают параметры `?from=YYYY-MM-DD&to=YYYY-MM-DD` или `?days=30`.
-
-## Безопасность
-
-- Токены хранятся в `.credentials.json` с правами `600` (только владелец)
-- Токены из `.env` имеют приоритет над сохранёнными через UI
-- Браузер получает только маскированные значения (первые 4 символа + `••••••••` + последние 3)
-- Rate limiting: 60 запросов/минуту на `/api/*`
-- Добавьте `.credentials.json` и `.env` в `.gitignore`
+## Vercel Cron
+`GET /api/cron/sync` — вызывается каждый час, синхронизирует Google Sheets и отправляет Telegram-уведомление.
