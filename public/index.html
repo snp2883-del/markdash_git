@@ -4842,31 +4842,47 @@ async function testPlatform(key){
   const dot = document.getElementById('pdot_google_sheets');
   const st  = document.getElementById('pconn_google_sheets');
   const pst = document.getElementById('pstatus_google_sheets');
+  const btn = document.querySelector('#pacc_google_sheets .btn.sm');
+
   if(st){ st.textContent='Проверка…'; st.className='conn-status'; }
+  if(pst) pst.textContent='';
+  if(btn){ btn.disabled=true; btn.textContent='…'; }
 
-  const sheetId = document.getElementById('pf_google_sheets_spreadsheet_id')?.value.trim()
-    || lsGet('mp_sheet_id')
-    || '1sx_aX23T_HtgRCk6KxVbSoU97ccvO3nTlAYYCfMc0V4';
+  // Collect ALL fields from UI to pass to server for one-time test
+  const g = id => document.getElementById(id)?.value.trim()||'';
+  const sheetId = g('pf_google_sheets_spreadsheet_id') || lsGet('mp_sheet_id') || '';
+  const saEmail = g('pf_google_sheets_sa_email');
+  const saKey   = g('pf_google_sheets_sa_key');
 
-  if(!sheetId){ showToast('Введите ID таблицы','error'); return; }
+  if(!sheetId){ showToast('Введите ID таблицы','error'); if(btn){btn.disabled=false;btn.textContent='Проверить';} return; }
+
+  // Build query string — pass SA creds for server-side JWT
+  const qs = new URLSearchParams({ spreadsheet_id: sheetId });
+  if(saEmail) qs.set('sa_email', saEmail);
+  if(saKey)   qs.set('sa_key',   saKey);
 
   try{
-    const res = await backendGet('/api/sheets/test?spreadsheet_id='+encodeURIComponent(sheetId));
+    const res = await backendGet('/api/sheets/test?'+qs.toString());
     if(res.ok){
       if(dot) dot.className='status-dot green';
       if(st){ st.textContent='✓ Подключено'; st.className='conn-status ok'; }
       if(pst){ pst.textContent=res.hint||res.title||''; pst.style.color='var(--accent2)'; }
-      showToast('Google Sheets: '+( res.hint||'подключение успешно'),'success');
+      showToast('Google Sheets: '+(res.hint||'подключение успешно'),'success');
+      // Save sheet ID to localStorage for sync button
+      lsSet('mp_sheet_id', sheetId);
+      lsSet('mp_sheet_gid', g('pf_google_sheets_sheet_gid')||'0');
     }else{
       if(dot) dot.className='status-dot red';
       if(st){ st.textContent='✗ Ошибка'; st.className='conn-status err'; }
-      if(pst){ pst.textContent=res.error||''; pst.style.color='var(--accent3)'; }
+      if(pst){ pst.textContent=res.error||'Ошибка'; pst.style.color='var(--accent3)'; }
       showToast('Google Sheets: '+(res.error||'ошибка'),'error');
     }
   }catch(e){
     if(dot) dot.className='status-dot red';
     if(st){ st.textContent='✗ '+e.message; st.className='conn-status err'; }
     showToast('Ошибка: '+e.message,'error');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent='Проверить'; }
   }
 }
 
