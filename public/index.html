@@ -4704,15 +4704,25 @@ async function mpSyncSheets(){
       return;
     }
 
-    // Merge: keep locally added rows, replace sheet rows
+    // Filter empty rows on client side too (belt and suspenders)
+    const cleanRows = result.rows.filter(r =>
+      r && (r.project||'').trim() && (r.platform||'').trim()
+    );
+
+    if(!cleanRows.length){
+      showToast('Google Sheets: все строки пустые после фильтрации','error');
+      return;
+    }
+
+    // Merge: replace all sheet rows, keep manually added
     const local = mediaplanDB.filter(r => !r._from_sheets);
-    mediaplanDB  = [...result.rows, ...local];
+    mediaplanDB  = [...cleanRows, ...local];
     saveMpDB();
     populateMpFilters();
     renderMediaplan();
     lsSet('mp_last_sync', result.synced_at);
-    showToast(`Sheets: загружено ${result.rows.length} строк`,'success');
-    updateMpSyncBadge(result.rows.length, result.synced_at);
+    showToast(`Sheets: загружено ${cleanRows.length} строк (отфильтровано ${result.rows.length - cleanRows.length} пустых)`, 'success');
+    updateMpSyncBadge(cleanRows.length, result.synced_at);
 
   }catch(e){
     showToast('Ошибка Sheets: '+e.message,'error');
