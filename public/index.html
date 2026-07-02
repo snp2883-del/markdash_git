@@ -4221,6 +4221,8 @@ function renderMediaplan(){
   if(view==='gantt') renderMpGantt();
   if(view==='pivot') renderMpPivot();
   updateMpSubtitle();
+  // Alerts — called directly here (no hook, to avoid hoisting recursion)
+  renderMpAlerts();
 }
 
 // ── project cards ─────────────────────────────────────
@@ -6243,14 +6245,13 @@ function renderMpAlerts(){
       </div>`).join('')}
     ${alerts.length > 5 ? `<div style="font-size:12px;color:var(--muted);padding:4px 14px">…ещё ${alerts.length-5} уведомлений</div>` : ''}
   `;
+
+  // Send critical alerts to Telegram (directly, no hook)
+  const critAlerts = alerts.filter(a => a.level === 'crit');
+  if(critAlerts.length) sendMpTelegramAlert(critAlerts);
 }
 
-// ── HOOK: renderMediaplan calls alerts ────────────────
-const _origRenderMediaplan = renderMediaplan;
-function renderMediaplan(){
-  _origRenderMediaplan();
-  renderMpAlerts();
-}
+// renderMpAlerts вызывается напрямую внутри renderMediaplan (убран хук из-за hoisting-рекурсии)
 
 // ── HOOK: renderTraffic adds compare + forecast lines ─
 const _origRenderTraffic = renderTraffic;
@@ -6582,20 +6583,7 @@ async function sendMpTelegramAlert(alerts){
   }catch(e){ /* silent */ }
 }
 
-// Hook: renderMpAlerts sends Telegram for critical alerts
-const _origRenderMpAlerts = renderMpAlerts;
-function renderMpAlerts(){
-  _origRenderMpAlerts();
-  // Extract alerts and send critical ones to Telegram
-  const panel = document.getElementById('mpAlertsPanel');
-  if(panel){
-    const critRows = panel.querySelectorAll('.mp-alert-row.crit');
-    if(critRows.length){
-      const alerts = [...critRows].map(r=>({level:'crit', title:r.querySelector('.mp-alert-text strong')?.textContent||''}));
-      sendMpTelegramAlert(alerts);
-    }
-  }
-}
+// Telegram alert для медиаплана вызывается напрямую из renderMpAlerts (убран хук из-за hoisting-рекурсии)
 
 // ── Inactivity lock overlay ────────────────────────────
 function showLockScreen(){
