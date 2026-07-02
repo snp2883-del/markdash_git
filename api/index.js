@@ -1105,9 +1105,14 @@ function parseSheetRow(headers, cols, idx) {
   const target   = exact('target')   || g('цел')      || '';
   const audience = exact('audience') || g('аудитор')  || 'All';
 
-  // ── Skip completely empty rows ─────────────────────────
-  // Empty = no project AND no platform AND no campaign
-  if (!project && !platform && !campaign) return null;
+  // ── Skip empty rows ────────────────────────────────────
+  // A row is empty if project AND platform are both missing,
+  // OR if ALL key fields are empty (catches rows with only boolean/whitespace)
+  const allEmpty = !project.trim() && !platform.trim() && !campaign.trim() && !target.trim();
+  if (allEmpty) return null;
+
+  // Also skip rows where project is missing but nothing meaningful exists
+  if (!project.trim() && !platform.trim()) return null;
 
   // ── Geo: detect from platform if no explicit column ───
   let geo = exact('geo') || g('геог') || g('geography') || '';
