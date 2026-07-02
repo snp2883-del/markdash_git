@@ -1105,14 +1105,16 @@ function parseSheetRow(headers, cols, idx) {
   const target   = exact('target')   || g('цел')      || '';
   const audience = exact('audience') || g('аудитор')  || 'All';
 
-  // ── Skip empty rows ────────────────────────────────────
-  // A row is empty if project AND platform are both missing,
-  // OR if ALL key fields are empty (catches rows with only boolean/whitespace)
+  // ── Skip only truly empty rows ─────────────────────────
   const allEmpty = !project.trim() && !platform.trim() && !campaign.trim() && !target.trim();
   if (allEmpty) return null;
-
-  // Also skip rows where project is missing but nothing meaningful exists
   if (!project.trim() && !platform.trim()) return null;
+
+  // ── Status from boolean flag + dates ──────────────────
+  // Last column: TRUE = launched/active, FALSE = planned (not yet launched)
+  const lastColVal = (cols[cols.length - 1] || '').trim().toUpperCase();
+  const isLaunched = lastColVal === 'TRUE' || lastColVal === '1';
+  const isFuture   = lastColVal === 'FALSE' || lastColVal === '0';
 
   // ── Geo: detect from platform if no explicit column ───
   let geo = exact('geo') || g('геог') || g('geography') || '';
@@ -1130,27 +1132,10 @@ function parseSheetRow(headers, cols, idx) {
   const owner    = exact('owner')  || g('владелец') || g('owner') || '';
   const format   = exact('format') || g('формат')   || g('ad format') || '';
 
-  // ── Status: use last boolean column or "status" column ─
-  // In BGS table: last column has TRUE/FALSE — TRUE=active/planned
-  const statusCol = exact('status') || g('статус') || '';
-  // Check boolean last column (the final column in the row)
-  const lastCol   = (cols[cols.length - 1] || '').trim().toUpperCase();
-  const isEnabled = lastCol === 'TRUE' || lastCol === '1' || lastCol.toLowerCase() === 'да';
-  const stMap = {
-    'активна':'active','active':'active','активно':'active',
-    'запланирован':'planned','planned':'planned','plan':'planned',
-    'пауза':'paused','paused':'paused',
-    'завершена':'ended','ended':'ended','done':'ended',
-  };
-  let status = stMap[statusCol.toLowerCase()] || 'planned';
-  // If boolean column says FALSE and status not explicitly set → treat as future planned
-  if (!stMap[statusCol.toLowerCase()] && lastCol === 'FALSE') status = 'planned';
-
   // ── Dates ──────────────────────────────────────────────
   // BGS columns: "Due date" = start, "End date" = end
   const parseDate = s => {
     if (!s) return null;
-    // Handle DD.MM.YYYY format (Russian)
     const ruMatch = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
     if (ruMatch) {
       const [, d, m, y] = ruMatch;
@@ -1160,11 +1145,39 @@ function parseSheetRow(headers, cols, idx) {
     return isNaN(d) ? null : d;
   };
 
-  // Try various column name patterns for start date
   const startRaw = exact('due date')  || exact('start date') || exact('start')
                 || g('due') || g('start') || g('старт') || g('дата старта') || '';
-  // End date
   const endRaw   = exact('end date')  || exact('end') || g('конец') || g('дата окончания') || '';
+
+  const startDate = parseDate(startRaw);
+  const endDate   = parseDate(endRaw);
+  const now       = new Date();
+
+  // ── Smart status detection ─────────────────────────────
+  let status;
+  // Check explicit status column first
+  const statusColRaw = exact('status') || g('статус') || '';
+  const stMap = {
+    'активна':'active','active':'active','активно':'active',
+    'запланирован':'planned','planned':'planned','plan':'planned',
+    'пауза':'paused','paused':'paused',
+    'завершена':'ended','ended':'ended','done':'ended',
+  };
+  if (stMap[statusColRaw.toLowerCase()]) {
+    status = stMap[statusColRaw.toLowerCase()];
+  } else if (!isLaunched) {
+    // FALSE = planned (not yet launched)
+    status = 'planned';
+  } else if (endDate && endDate < now) {
+    // TRUE + end date in past = ended
+    status = 'ended';
+  } else if (startDate && startDate > now) {
+    // TRUE + start date in future = planned
+    status = 'planned';
+  } else {
+    // TRUE + current = active
+    status = 'active';
+  }
 
   // ── Budget & Leads: may not exist in schedule table ───
   const cleanNum = s => parseInt((s||'').replace(/\s/g,'').replace(',','.').replace(/[^\d]/g,'')) || 0;
@@ -1176,22 +1189,15 @@ function parseSheetRow(headers, cols, idx) {
   return {
     id:           `SH${String(idx).padStart(4, '0')}`,
     source_row:   idx,
-    project,
-    platform,
-    geo,
-    campaign,
-    format,
-    target,
-    owner,
-    audience,
+    project, platform, geo, campaign, format, target, owner, audience,
     status,
-    startDate:    parseDate(startRaw),
-    endDate:      parseDate(endRaw),
+    startDate,
+    endDate,
     budgetPlan, budgetFact, leadsPlan, leadsFact,
     cpl:          leadsFact > 0 ? Math.round(budgetFact / leadsFact) : 0,
     comment:      exact('comment') || g('комментарий') || g('notes') || '',
     _from_sheets: true,
-    // Extra BGS fields for reference
+    _launched:    isLaunched,   // TRUE = launched, FALSE = planned
     _year:        exact('year')        || g('год') || '',
     _event_dates: exact('event dates') || g('даты') || '',
     _duration:    exact('duration (days)') || g('duration') || '',
