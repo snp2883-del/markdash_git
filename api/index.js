@@ -1153,17 +1153,19 @@ function parseSheetRow(headers, cols, idx) {
   const endDate   = parseDate(endRaw);
   const now       = new Date();
 
-  // ── Smart status detection ─────────────────────────────
-  let status;
-  // Check explicit status column first
-  const statusColRaw = exact('status') || g('статус') || '';
+  // ── Explicit Status column (highest priority) ──────────
+  // Try multiple name variants: "Status", "Статус", "status"
+  const statusColRaw = exact('status') || exact('статус') || g('status') || g('статус') || '';
   const stMap = {
-    'активна':'active','active':'active','активно':'active',
-    'запланирован':'planned','planned':'planned','plan':'planned',
-    'пауза':'paused','paused':'paused',
-    'завершена':'ended','ended':'ended','done':'ended',
+    'активна':'active', 'active':'active', 'активно':'active', 'да':'active', 'yes':'active',
+    'запланирован':'planned', 'planned':'planned', 'план':'planned', 'plan':'planned', 'нет':'planned',
+    'пауза':'paused', 'paused':'paused', 'на паузе':'paused',
+    'завершена':'ended', 'ended':'ended', 'done':'ended', 'завершен':'ended', 'completed':'ended',
   };
-  if (stMap[statusColRaw.toLowerCase()]) {
+
+  let status;
+  if (statusColRaw && stMap[statusColRaw.toLowerCase()]) {
+    // Status column found and recognized → use it as-is
     status = stMap[statusColRaw.toLowerCase()];
   } else if (!isLaunched) {
     // FALSE = planned (not yet launched)
