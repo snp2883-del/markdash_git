@@ -4716,9 +4716,13 @@ async function mpSyncSheets(){
       return;
     }
 
-    // Merge: replace all sheet rows, keep manually added
-    const local = mediaplanDB.filter(r => !r._from_sheets);
-    mediaplanDB  = [...cleanRows, ...local];
+    // Full replace from Sheets — keep ONLY rows that were manually added
+    // (rows with budgetPlan/leadsPlan data entered via modal, not from old imports)
+    const manualRows = mediaplanDB.filter(r =>
+      !r._from_sheets &&
+      (r.budgetPlan > 0 || r.leadsPlan > 0 || r.budgetFact > 0)
+    );
+    mediaplanDB = [...cleanRows, ...manualRows];
     saveMpDB();
     populateMpFilters();
     renderMediaplan();
