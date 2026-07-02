@@ -4722,6 +4722,15 @@ async function mpSyncSheets(){
       !r._from_sheets &&
       (r.budgetPlan > 0 || r.leadsPlan > 0 || r.budgetFact > 0)
     );
+
+    // Update status of manual rows if they match a Sheets row
+    const key = r => `${(r.project||'').toLowerCase()}|${(r.platform||'').toLowerCase()}|${(r.campaign||'').toLowerCase()}`;
+    const sheetsMap = new Map(cleanRows.map(r => [key(r), r]));
+    manualRows.forEach(r => {
+      const match = sheetsMap.get(key(r));
+      if(match && match.status) r.status = match.status;
+    });
+
     mediaplanDB = [...cleanRows, ...manualRows];
     saveMpDB();
     populateMpFilters();
