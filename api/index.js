@@ -1291,16 +1291,16 @@ app.get('/api/sheets/test', async (req, res) => {
 app.get('/api/sheets/mediaplan', async (req, res) => {
   const c = getCreds();
   const sheetId  = c.sheets.spreadsheet_id || req.query.spreadsheet_id;
-  const sheetGid = c.sheets.sheet_gid      || req.query.gid || '0';
-  const rangeName= req.query.range || c.sheets.sheet_name || 'Sheet1';
+  const sheetGid = c.sheets.sheet_gid      || req.query.gid || '1298716681';
+  const rangeName= req.query.range || c.sheets.sheet_name || 'schedule EU+RU';
 
   if (!sheetId) return res.status(400).json({ error: 'Не задан CRED__SHEETS__SPREADSHEET_ID' });
 
   try {
     const token = await getSheetsToken(c);
 
-    // First get sheet name by GID if gid provided
-    let range = rangeName;
+    // ── 1. Get plan (schedule EU+RU) ──
+    let planRange = rangeName;
     if (sheetGid && sheetGid !== '0') {
       const metaR = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties`,
@@ -1308,11 +1308,11 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
       );
       const meta = await metaR.json();
       const sheet = (meta.sheets||[]).find(s => String(s.properties?.sheetId) === String(sheetGid));
-      if (sheet) range = sheet.properties.title;
+      if (sheet) planRange = sheet.properties.title;
     }
 
     const r = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(planRange)}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     const d = await r.json();
@@ -1321,11 +1321,167 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
     const [headerRow, ...dataRows] = d.values || [];
     if (!headerRow) return res.json({ rows: [], warning: 'Лист пустой' });
 
-    const rows = dataRows
-      .filter(row => row.some(c => c?.trim()))   // skip empty rows
-      .map((row, i) => parseSheetRow(headerRow, row, i + 2)).filter(Boolean);
+    let planRows = dataRows
+      .filter(row => row.some(c => c?.trim()))
+      .map((row, i) => parseSheetRow(headerRow, row, i + 2))
+      .filter(Boolean);
 
-    res.json({ rows, total: rows.length, sheet: range, synced_at: new Date().toISOString() });
+    // ── 2. Fetch actuals from mediaplan EU (GID 0) and mediaplan RU (GID 39245729) ──
+    // Real structure of these sheets:
+    //   Project | Platform | Campaign | Audience | Owner | Target | Ad format | Contacts | Link
+    //   Start date | Duration (days) | End date | Daily budget | Views | Clicks | CPC
+    //   Total costs | Budget compliance | CR2 | Lead forms | CPO
+    const actualsSheets = [
+      { name: 'mediaplan EU', geoDefault: 'EU' },
+      { name: 'mediaplan RU', geoDefault: 'RUS' },
+    ];
+    let actualsRows   = [];
+    let actualsErrors = [];
+
+    // Parse a number that may contain "p." prefix, spaces, currency
+    const parseAmount = s => {
+      if (!s) return 0;
+      // Remove p., $, ₽, spaces, commas (thousand separators)
+      const cleaned = String(s)
+        .replace(/[p.₽$€\s]/gi, '')
+        .replace(/,/g, '.')
+        .replace(/[^\d.]/g, '');
+      const n = parseFloat(cleaned);
+      return isNaN(n) ? 0 : Math.round(n);
+    };
+
+    for (const sh of actualsSheets) {
+      try {
+        const rr = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sh.name)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const dd = await rr.json();
+        if (!rr.ok) { actualsErrors.push(`${sh.name}: ${dd.error?.message||rr.status}`); continue; }
+        const rows = dd.values || [];
+        if (rows.length < 4) continue;   // header at row 3 (index 2)
+
+        // Find header row — try row 3 (index 2) first, then row 1
+        let hIdx = 2;
+        let ah = rows[hIdx] || [];
+        if (!ah.some(c => (c||'').toLowerCase().includes('project'))) {
+          hIdx = 0;
+          ah = rows[0] || [];
+        }
+        const hdrLower = ah.map(h => (h||'').toLowerCase().trim());
+
+        // Find column indices
+        const findCol = (...names) => {
+          for (const name of names) {
+            const i = hdrLower.findIndex(h => h === name.toLowerCase() || h.includes(name.toLowerCase()));
+            if (i >= 0) return i;
+          }
+          return -1;
+        };
+
+        const cIdx = {
+          project:     findCol('project'),
+          platform:    findCol('platform'),
+          campaign:    findCol('campaign'),
+          audience:    findCol('audience'),
+          target:      findCol('target'),
+          startDate:   findCol('start date'),
+          duration:    findCol('duration'),
+          endDate:     findCol('end date'),
+          dailyBudget: findCol('daily budget'),
+          views:       findCol('views'),
+          clicks:      findCol('clicks'),
+          totalCosts:  findCol('total costs'),
+          leadForms:   findCol('lead forms', 'leads'),
+          cpo:         findCol('cpo'),
+          cr2:         findCol('cr2'),
+        };
+
+        // Data starts after header row
+        for (let i = hIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || !row.some(c => c?.trim())) continue;
+          const project = (row[cIdx.project] || '').trim();
+          if (!project) continue;
+
+          const dailyBudget = parseAmount(row[cIdx.dailyBudget]);
+          const duration    = parseInt(row[cIdx.duration]) || 0;
+          const totalCosts  = parseAmount(row[cIdx.totalCosts]);
+          const leadForms   = parseInt(row[cIdx.leadForms]) || 0;
+          const cpo         = parseAmount(row[cIdx.cpo]);
+
+          actualsRows.push({
+            project,
+            platform:    (row[cIdx.platform] || '').trim(),
+            campaign:    (row[cIdx.campaign] || '').trim(),
+            audience:    (row[cIdx.audience] || '').trim(),
+            target:      (row[cIdx.target]   || '').trim(),
+            startDate:   (row[cIdx.startDate]|| '').trim(),
+            endDate:     (row[cIdx.endDate]  || '').trim(),
+            dailyBudget,
+            duration,
+            budgetPlan:  dailyBudget * (duration || 1),
+            budgetFact:  totalCosts,
+            leadsFact:   leadForms,
+            cpl:         cpo,
+            _source_sheet: sh.name,
+            _geo:          sh.geoDefault,
+          });
+        }
+      } catch(e) {
+        actualsErrors.push(`${sh.name}: ${e.message}`);
+      }
+    }
+
+    // ── 3. Match plan rows to actuals ──
+    const normalize = s => (s||'').toLowerCase().replace(/[\s_\-\.]/g,'').trim();
+
+    planRows = planRows.map(pr => {
+      const projN = normalize(pr.project);
+      const platN = normalize(pr.platform);
+      const campN = normalize(pr.campaign);
+      const targN = normalize(pr.target);
+
+      // Match by project + platform + (target OR campaign)
+      // Because in EU/RU sheets campaign field is often "Retarget" but plan has "Retarget, Look-a-like"
+      const match = actualsRows.find(ar => {
+        const arProj = normalize(ar.project);
+        const arPlat = normalize(ar.platform);
+        const arCamp = normalize(ar.campaign);
+        const arTarg = normalize(ar.target);
+
+        const projMatch = arProj && (arProj === projN || arProj.includes(projN) || projN.includes(arProj));
+        if (!projMatch) return false;
+
+        // Platform matching — LinkedIn variants are same
+        const bothLinkedIn = arPlat.includes('linkedin') && platN.includes('linkedin');
+        const bothDirect   = (arPlat.includes('direct')||arPlat.includes('яндекс')) && (platN.includes('direct')||platN.includes('яндекс'));
+        const platMatch    = arPlat === platN || bothLinkedIn || bothDirect;
+        if (!platMatch) return false;
+
+        // Target matches OR campaign matches
+        const targMatch = arTarg && targN && (arTarg === targN || arTarg.includes(targN) || targN.includes(arTarg));
+        const campMatch = arCamp && campN && (arCamp === campN || arCamp.includes(campN) || campN.includes(arCamp));
+        return targMatch || campMatch || (!arTarg && !arCamp);
+      });
+
+      if (match) {
+        pr.budgetPlan = match.budgetPlan || pr.budgetPlan;
+        pr.budgetFact = match.budgetFact || pr.budgetFact;
+        pr.leadsFact  = match.leadsFact  || pr.leadsFact;
+        pr.cpl        = match.cpl || (pr.leadsFact > 0 ? Math.round(pr.budgetFact/pr.leadsFact) : 0);
+        pr._matched_actuals = match._source_sheet;
+      }
+      return pr;
+    });
+
+    res.json({
+      rows: planRows,
+      total: planRows.length,
+      sheet: planRange,
+      actuals: { total: actualsRows.length, sheets: actualsSheets.map(s=>s.name), errors: actualsErrors },
+      synced_at: new Date().toISOString(),
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
