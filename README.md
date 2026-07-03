@@ -2,11 +2,9 @@
 
 Маркетинговый дашборд BGS Group. Проект Клуба Амбассадоров.
 
----
+## Деплой на Vercel
 
-## Быстрый деплой на Vercel
-
-### 1. Загрузи на GitHub
+### 1. GitHub
 ```bash
 unzip markdash.zip && cd markdash
 git init && git add .
@@ -15,50 +13,49 @@ git remote add origin https://github.com/ВАШ_ЮЗЕР/markdash.git
 git push -u origin main
 ```
 
-### 2. Подключи Vercel
+### 2. Vercel
 vercel.com → Add New → Project → выбери репозиторий → Framework: **Other** → Deploy
 
-### 3. Environment Variables (Settings → Environment Variables)
+### 3. Environment Variables
 
-#### Обязательные
-| Переменная | Значение |
-|---|---|
-| `JWT_SECRET` | длинная случайная строка |
-| `CRED__BITRIX24__WEBHOOK` | `https://your.bitrix24.ru/rest/1/xxxxx/` |
-| `CRED__BITRIX24__ENTITY_TYPE` | `both` |
-| `CRED__YANDEX_METRICA__TOKEN` | OAuth токен |
-| `CRED__YANDEX_METRICA__COUNTER_ID` | `99208100` |
-
-#### Медиаплан (Google Sheets)
-| Переменная | Значение |
-|---|---|
-| `CRED__SHEETS__SPREADSHEET_ID` | ID таблицы из URL |
-| `CRED__SHEETS__SHEET_GID` | `287894245` |
-| `CRED__SHEETS__SHEET_NAME` | имя листа |
-
-#### Telegram-уведомления
-| Переменная | Значение |
-|---|---|
-| `CRED__TELEGRAM__BOT_TOKEN` | токен от @BotFather |
-| `CRED__TELEGRAM__CHAT_ID` | ID чата |
-
-#### Пользователи (опционально, есть демо-доступ)
+**Обязательные:**
 ```
-USER__ADMIN__HASH   = bcrypt хэш пароля
-USER__ADMIN__ROLE   = admin
-USER__ADMIN__NAME   = Иван Иванов
+JWT_SECRET                        (длинная случайная строка)
+CRED__BITRIX24__WEBHOOK           https://bitrix-dev.bgs-group.eu/rest/1414/banioa8pgg0p0xdz/
+CRED__BITRIX24__ENTITY_TYPE       both
+CRED__YANDEX_METRICA__TOKEN       (OAuth токен)
+CRED__YANDEX_METRICA__COUNTER_ID  99208100
 ```
-Генерация хэша: `node -e "const b=require('bcryptjs');console.log(b.hashSync('пароль',10))"`
 
-#### Прочие платформы
+**Google Sheets (медиаплан):**
+```
+CRED__SHEETS__SPREADSHEET_ID      1sx_aX23T_HtgRCk6KxVbSoU97ccvO3nTlAYYCfMc0V4
+CRED__SHEETS__SHEET_GID           1298716681
+CRED__SHEETS__SHEET_NAME          schedule EU+RU
+CRED__SHEETS__SA_EMAIL            sheets-parser@sheets-parser-500513.iam.gserviceaccount.com
+CRED__SHEETS__SA_KEY              (ключ PEM целиком, \n сохранит)
+```
+
+**Telegram:**
+```
+CRED__TELEGRAM__BOT_TOKEN
+CRED__TELEGRAM__CHAT_ID
+```
+
+**Прочее:**
 ```
 CRED__YANDEX_DIRECT__TOKEN
 CRED__GOOGLE__CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN / GA4_PROPERTY_ID
 CRED__LINKEDIN__ACCESS_TOKEN / ACCOUNT_ID
-CRON_SECRET   (защита cron endpoint)
 ```
 
-После добавления переменных → **Redeploy**
+**Пользователи** (опционально, есть демо):
+```
+USER__ADMIN__HASH   (bcrypt хэш пароля)
+USER__ADMIN__ROLE   admin
+USER__ADMIN__NAME   Иван Иванов
+```
+Генерация хэша: `node -e "const b=require('bcryptjs');console.log(b.hashSync('пароль',10))"`
 
 ---
 
@@ -72,9 +69,29 @@ CRON_SECRET   (защита cron endpoint)
 ## Локальный запуск
 ```bash
 npm install
-cp .env.example .env   # заполни токены
+cp .env.example .env
 node server/index.js   # → http://localhost:3000
 ```
+
+---
+
+## Медиаплан — как работает автоматизация
+
+Дашборд читает данные из 3 листов Google-таблицы:
+
+| Лист | Что берёт |
+|---|---|
+| `schedule EU+RU` | План (проект, платформа, кампания, target, даты, статус) |
+| `mediaplan EU` | Факт: Total costs → Бюджет факт, Lead forms → Лиды факт, CPO → CPL |
+| `mediaplan RU` | То же для русских проектов |
+
+**Матчинг между листами** — по проекту + платформе + target/campaign.
+
+**Кнопки в медиаплане:**
+- «Синхр. Sheets» — тянет план + факт из 3 листов, статус из `schedule EU+RU`
+- «Факт из B24» — считает лиды по UTM-меткам из Bitrix24
+
+Медиаплан также поддерживает CSV импорт/экспорт, ручное добавление строк, три вида (Таблица / Ганта / Сводная), алерты и Telegram-уведомления.
 
 ---
 
@@ -83,21 +100,35 @@ node server/index.js   # → http://localhost:3000
 |---|---|
 | Яндекс.Метрика | ✅ Работает |
 | Bitrix24 CRM | ✅ Работает |
-| Google Sheets | ✅ Работает (публичная таблица или Service Account) |
+| Google Sheets | ✅ Работает (Service Account) |
 | Яндекс.Директ | ⏳ Ждёт одобрения заявки |
 | Google Analytics 4 | ⏳ Ждёт токенов |
-| Google Ads | ⏳ Ждёт токенов |
 | LinkedIn Ads | ⏳ Ждёт токенов |
 
 ---
 
-## Архитектура
-```
-public/index.html     — SPA фронтенд (~6750 строк)
-api/index.js          — Vercel Serverless handler (~1470 строк)
-server/index.js       — Локальный Express сервер
-vercel.json           — Routing + Cron (каждый час)
+## После деплоя — очистка кэша браузера
+
+Первый вход после обновления — очисти localStorage:
+```js
+localStorage.clear();
+location.reload();
 ```
 
-## Vercel Cron
-`GET /api/cron/sync` — вызывается каждый час, синхронизирует Google Sheets и отправляет Telegram-уведомление.
+Или только медиаплан:
+```js
+localStorage.removeItem('bgs_markdash_mediaplan_db');
+localStorage.removeItem('mp_last_sync');
+location.reload();
+```
+
+---
+
+## Файловая структура
+```
+public/index.html      — SPA фронтенд (~6775 строк)
+api/index.js           — Vercel Serverless handler (~1772 строки)
+server/index.js        — Локальный Express сервер
+vercel.json            — Routing (crons убраны для Hobby плана)
+package.json           — Deps: express, jwt, bcryptjs, node-fetch
+```
