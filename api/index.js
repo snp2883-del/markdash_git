@@ -1110,11 +1110,38 @@ function parseSheetRow(headers, cols, idx) {
   if (allEmpty) return null;
   if (!project.trim() && !platform.trim()) return null;
 
-  // ── Status from boolean flag + dates ──────────────────
-  // Last column: TRUE = launched/active, FALSE = planned (not yet launched)
-  const lastColVal = (cols[cols.length - 1] || '').trim().toUpperCase();
-  const isLaunched = lastColVal === 'TRUE' || lastColVal === '1';
-  const isFuture   = lastColVal === 'FALSE' || lastColVal === '0';
+  // ── Read Status column by name (priority) ─────────────
+  // In BGS table there are TWO status-related columns:
+  //   - Boolean checkbox column (may or may not have a header name)
+  //   - "Status" text column with values: Active / Planned / Ended
+  // We read the text "Status" column first — it's the source of truth.
+  const statusColRaw = exact('status') || exact('статус') || g('status') || g('статус') || '';
+
+  // Boolean checkbox — supplementary signal, look in ANY column with TRUE/FALSE value
+  // that isn't already a named column we know about
+  const namedCols = new Set(['project','year','event dates','target','due date',
+    'duration (days)','end date','platform','campaign','audience','status',
+    'проект','год','статус','дата','кампания','платформа','целевая аудитория']);
+  let isLaunched = null;   // null = unknown
+  for (let i = 0; i < hdrNorm.length; i++) {
+    const hdr = hdrNorm[i];
+    // Skip columns we already know
+    if (namedCols.has(hdr)) continue;
+    const val = (cols[i] || '').trim().toUpperCase();
+    if (val === 'TRUE' || val === '1') { isLaunched = true;  break; }
+    if (val === 'FALSE' || val === '0'){ isLaunched = false; break; }
+  }
+  // Also check the "extra" (empty-name) column at the position 10 in BGS layout
+  // (the checkbox before Status)
+  if (isLaunched === null) {
+    for (let i = 0; i < hdrNorm.length; i++) {
+      if (!hdrNorm[i]) {  // unnamed column
+        const val = (cols[i] || '').trim().toUpperCase();
+        if (val === 'TRUE')  { isLaunched = true;  break; }
+        if (val === 'FALSE') { isLaunched = false; break; }
+      }
+    }
+  }
 
   // ── Geo: detect from platform if no explicit column ───
   let geo = exact('geo') || g('геог') || g('geography') || '';
@@ -1153,9 +1180,8 @@ function parseSheetRow(headers, cols, idx) {
   const endDate   = parseDate(endRaw);
   const now       = new Date();
 
-  // ── Explicit Status column (highest priority) ──────────
-  // Try multiple name variants: "Status", "Статус", "status"
-  const statusColRaw = exact('status') || exact('статус') || g('status') || g('статус') || '';
+  // ── Status determination ─────────────────────────────
+  // Priority: 1) explicit "Status" text column, 2) checkbox boolean, 3) dates
   const stMap = {
     'активна':'active', 'active':'active', 'активно':'active', 'да':'active', 'yes':'active',
     'запланирован':'planned', 'planned':'planned', 'план':'planned', 'plan':'planned', 'нет':'planned',
@@ -1164,21 +1190,22 @@ function parseSheetRow(headers, cols, idx) {
   };
 
   let status;
-  if (statusColRaw && stMap[statusColRaw.toLowerCase()]) {
-    // Status column found and recognized → use it as-is
-    status = stMap[statusColRaw.toLowerCase()];
-  } else if (!isLaunched) {
-    // FALSE = planned (not yet launched)
+  const statusKey = statusColRaw.toLowerCase().trim();
+  if (statusKey && stMap[statusKey]) {
+    // 1) Explicit Status column — highest priority, use as-is
+    status = stMap[statusKey];
+  } else if (isLaunched === false) {
+    // 2) Checkbox FALSE = planned/not launched yet
     status = 'planned';
   } else if (endDate && endDate < now) {
-    // TRUE + end date in past = ended
+    // 3) Date fallback: end in past = ended
     status = 'ended';
   } else if (startDate && startDate > now) {
-    // TRUE + start date in future = planned
     status = 'planned';
-  } else {
-    // TRUE + current = active
+  } else if (isLaunched === true) {
     status = 'active';
+  } else {
+    status = 'planned';
   }
 
   // ── Budget & Leads: may not exist in schedule table ───
