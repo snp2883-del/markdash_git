@@ -4111,8 +4111,13 @@ function initMediaplan(){
       endDate:   r.endDate   ? new Date(r.endDate)   : null,
     }));
   } else {
-    mediaplanDB = generateDemoMediaplan();
+    // No demo data — dashboard starts empty, user syncs from Sheets or adds manually
+    mediaplanDB = [];
     saveMpDB();
+    // Auto-trigger Sheets sync on first load if backend available
+    if(HAS_BACKEND){
+      setTimeout(()=>{ mpSyncSheets && mpSyncSheets(); }, 300);
+    }
   }
   populateMpFilters();
   renderMediaplan();
@@ -4715,11 +4720,13 @@ async function mpSyncSheets(){
       return;
     }
 
-    // Full replace from Sheets — keep ONLY rows that were manually added
-    // (rows with budgetPlan/leadsPlan data entered via modal, not from old imports)
+    // Full replace from Sheets — keep ONLY rows manually added via modal
+    // (their ID starts with 'MP' prefix from openMpModal → saveMpRow)
+    // This eliminates any legacy demo data
     const manualRows = mediaplanDB.filter(r =>
       !r._from_sheets &&
-      (r.budgetPlan > 0 || r.leadsPlan > 0 || r.budgetFact > 0)
+      typeof r.id === 'string' && r.id.startsWith('MP') &&
+      !r._demo
     );
 
     // Update status of manual rows if they match a Sheets row
