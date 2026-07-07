@@ -1338,17 +1338,36 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
     let actualsRows   = [];
     let actualsErrors = [];
 
-    // Parse a number that may contain "p." prefix, spaces, currency
+    // Parse a number that may contain "p.", "$", spaces, decimal comma or dot
+    // Examples: "p.564,75", "$100,00", "1 245", "₽42 154", "$564,75"
     const parseAmount = s => {
       if (!s) return 0;
-      // Remove p., $, ₽, spaces, commas (thousand separators)
-      const cleaned = String(s)
-        .replace(/[p.₽$€\s]/gi, '')
-        .replace(/,/g, '.')
-        .replace(/[^\d.]/g, '');
-      const n = parseFloat(cleaned);
-      return isNaN(n) ? 0 : Math.round(n);
+      let str = String(s).trim();
+      // Detect currency BEFORE stripping
+      const isUSD = /\$/.test(str);
+      const isRUB = /(₽|p\.|р\.)/i.test(str);
+      // Strip currency symbols and "p." / "р." prefix
+      str = str.replace(/\$|₽|p\.|р\./gi, '').trim();
+      // Remove thousand-separator spaces
+      str = str.replace(/\s/g, '');
+      // Russian decimal comma → dot (e.g. "564,75" → "564.75")
+      // If there's both dot and comma, dot is thousands, comma is decimal
+      if (str.includes(',') && str.includes('.')) {
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else if (str.includes(',')) {
+        // Only comma → assume decimal
+        str = str.replace(',', '.');
+      }
+      // Strip any leftover non-numeric
+      str = str.replace(/[^\d.]/g, '');
+      const n = parseFloat(str);
+      if (isNaN(n)) return 0;
+      // Convert USD to RUB for EU sheet (currency mixing)
+      return { value: Math.round(n), usd: isUSD, rub: isRUB };
     };
+
+    // USD → RUB conversion rate (approximate, can be moved to env var)
+    const USD_TO_RUB = parseFloat(process.env.USD_TO_RUB || '95') || 95;
 
     for (const sh of actualsSheets) {
       try {
@@ -1397,6 +1416,22 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
           cr2:         findCol('cr2'),
         };
 
+        // Detect sheet currency: EU sheet is in USD by default, RU sheet in RUB
+        const sheetCurrency = sh.name.toLowerCase().includes('eu') ? 'usd' : 'rub';
+
+        // Helper to convert parsed value to RUB
+        const toRUB = parsed => {
+          if (!parsed || !parsed.value) return 0;
+          // If explicitly marked USD → convert
+          if (parsed.usd) return Math.round(parsed.value * USD_TO_RUB);
+          // If explicitly marked RUB → as is
+          if (parsed.rub) return parsed.value;
+          // No currency symbol → use sheet default
+          return sheetCurrency === 'usd'
+            ? Math.round(parsed.value * USD_TO_RUB)
+            : parsed.value;
+        };
+
         // Data starts after header row
         for (let i = hIdx + 1; i < rows.length; i++) {
           const row = rows[i];
@@ -1404,11 +1439,11 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
           const project = (row[cIdx.project] || '').trim();
           if (!project) continue;
 
-          const dailyBudget = parseAmount(row[cIdx.dailyBudget]);
+          const dailyBudget = toRUB(parseAmount(row[cIdx.dailyBudget]));
           const duration    = parseInt(row[cIdx.duration]) || 0;
-          const totalCosts  = parseAmount(row[cIdx.totalCosts]);
+          const totalCosts  = toRUB(parseAmount(row[cIdx.totalCosts]));
           const leadForms   = parseInt(row[cIdx.leadForms]) || 0;
-          const cpo         = parseAmount(row[cIdx.cpo]);
+          const cpo         = toRUB(parseAmount(row[cIdx.cpo]));
 
           actualsRows.push({
             project,
@@ -1424,6 +1459,7 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
             budgetFact:  totalCosts,
             leadsFact:   leadForms,
             cpl:         cpo,
+            _currency:   sheetCurrency,
             _source_sheet: sh.name,
             _geo:          sh.geoDefault,
           });
