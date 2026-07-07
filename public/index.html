@@ -1524,6 +1524,8 @@ input:focus,select:focus,textarea:focus{
                 <th>Owner</th>
                 <th>Аудитория</th>
                 <th>Статус</th>
+                <th onclick="mpSort('startDate')" title="Дата старта">Старт <span id="mps-startDate">↕</span></th>
+                <th onclick="mpSort('endDate')" title="Дата окончания">Конец <span id="mps-endDate">↕</span></th>
                 <th onclick="mpSort('budgetPlan')">Бюджет план <span id="mps-budgetPlan">↕</span></th>
                 <th onclick="mpSort('budgetFact')">Бюджет факт <span id="mps-budgetFact">↕</span></th>
                 <th>%</th>
@@ -4313,7 +4315,7 @@ function renderMpPva(){
 // ── table ─────────────────────────────────────────────
 function mpSort(col){
   mpSortCol===col ? mpSortDir*=-1 : (mpSortCol=col, mpSortDir=1);
-  ['project','platform','campaign','budgetPlan','budgetFact','leadsPlan','leadsFact','cpl'].forEach(c=>{
+  ['project','platform','campaign','startDate','endDate','budgetPlan','budgetFact','leadsPlan','leadsFact','cpl'].forEach(c=>{
     const el=document.getElementById('mps-'+c);
     if(el) el.textContent = c===mpSortCol ? (mpSortDir===1?'↑':'↓') : '↕';
   });
@@ -4322,7 +4324,13 @@ function mpSort(col){
 
 function renderMpTable(){
   const rows = getMpFiltered().sort((a,b)=>{
-    const av=a[mpSortCol], bv=b[mpSortCol];
+    let av=a[mpSortCol], bv=b[mpSortCol];
+    // Date columns: convert to timestamp for numeric compare
+    if(mpSortCol==='startDate' || mpSortCol==='endDate'){
+      av = av ? new Date(av).getTime() : 0;
+      bv = bv ? new Date(bv).getTime() : 0;
+      return (av-bv)*mpSortDir;
+    }
     if(typeof av==='number') return (av-bv)*mpSortDir;
     return String(av||'').localeCompare(String(bv||''))*mpSortDir;
   });
@@ -4334,15 +4342,21 @@ function renderMpTable(){
     ended:  `<span class="badge badge-dn">Завершена</span>`,
   };
 
+  const fmtDate = d => {
+    if(!d) return '—';
+    const date = new Date(d);
+    if(isNaN(date)) return '—';
+    return date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  };
+
   const body = document.getElementById('mpBody'); if(!body) return;
-  if(!rows.length){ body.innerHTML=`<tr><td colspan="16" style="text-align:center;padding:2rem;color:var(--muted)">Нет строк</td></tr>`; return; }
+  if(!rows.length){ body.innerHTML=`<tr><td colspan="18" style="text-align:center;padding:2rem;color:var(--muted)">Нет строк</td></tr>`; return; }
 
   body.innerHTML = rows.map(r=>{
     const bPct   = r.budgetPlan > 0 ? Math.round(r.budgetFact/r.budgetPlan*100) : 0;
     const lPct   = r.leadsPlan  > 0 ? Math.round(r.leadsFact/r.leadsPlan*100)   : 0;
     const bColor = bPct>=100?'#3dcea0':bPct>=70?'#f0a500':'#ff6b4a';
     const pIdx   = MP_PROJ_COLORS[MP_PROJECTS.indexOf(r.project) % MP_PROJ_COLORS.length] || '#888';
-    // platform color
     const platColors={'LinkedIn O&G':'#0077b5','LinkedIn Pharma':'#0a66c2','LinkedIn Chemical':'#004182',
       'LinkedIn':'#0077b5','Telegram':'#229ED9','Яндекс.Директ':'#ffcc00','Google Ads':'#4285f4','Email':'#3dcea0'};
     const pColor = platColors[r.platform] || '#888';
@@ -4362,6 +4376,8 @@ function renderMpTable(){
       <td><span class="badge" style="background:rgba(79,127,255,.1);color:var(--accent4)">${r.owner}</span></td>
       <td style="font-size:11px;color:var(--muted)">${r.audience}</td>
       <td>${stBadge[r.status]||r.status}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums">${fmtDate(r.startDate)}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums">${fmtDate(r.endDate)}</td>
       <td style="font-variant-numeric:tabular-nums">₽${r.budgetPlan.toLocaleString('ru')}</td>
       <td>
         <div class="mp-budget-bar">
