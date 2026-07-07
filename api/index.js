@@ -1491,49 +1491,73 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
       const projN = normalize(pr.project);
       const platN = normalize(pr.platform);
       const targN = normalize(pr.target);
+      const campN = normalize(pr.campaign);
+      const audN  = normalize(pr.audience);
 
-      // Skip if no target — can't match reliably
       if (!targN) return pr;
 
-      // Find ALL matching actuals rows (weekly lines for THIS specific campaign)
-      // Strict rule: project + platform + TARGET must all match
-      // (campaign name like "Retarget" is too generic and would over-match)
+      // Plan row date range (from schedule EU+RU)
+      const prStart = pr.startDate ? new Date(pr.startDate) : null;
+      const prEnd   = pr.endDate   ? new Date(pr.endDate)   : null;
+
+      // Find matching actuals — must match ALL: project, platform, target, campaign, audience
+      // AND date overlap with plan row's period
       const matches = actualsRows.filter(ar => {
         const arProj = normalize(ar.project);
         const arPlat = normalize(ar.platform);
         const arTarg = normalize(ar.target);
+        const arCamp = normalize(ar.campaign);
+        const arAud  = normalize(ar.audience);
 
-        // Project — must match
+        // Project
         const projMatch = arProj && (arProj === projN || arProj.includes(projN) || projN.includes(arProj));
         if (!projMatch) return false;
 
-        // Platform — must match (LinkedIn variants are same, Direct variants are same)
+        // Platform (with LinkedIn brand check)
         const bothLinkedIn = arPlat.includes('linkedin') && platN.includes('linkedin');
         const bothDirect   = (arPlat.includes('direct')||arPlat.includes('яндекс')) && (platN.includes('direct')||platN.includes('яндекс'));
-        // But LinkedIn O&G != LinkedIn Pharma — need finer check for LinkedIn
         let platMatch;
         if (bothLinkedIn) {
-          // For LinkedIn variants — require the specific brand (O&G / Pharma / Chemical) to match too
-          const arBrand = arPlat.replace(/[^a-z]/g,''); // "linkedinog" / "linkedinpharma" / "linkedinchemical"
-          const prBrand = platN.replace(/[^a-z]/g,'');
-          platMatch = arBrand === prBrand;
+          platMatch = arPlat.replace(/[^a-z]/g,'') === platN.replace(/[^a-z]/g,'');
         } else {
           platMatch = arPlat === platN || bothDirect;
         }
         if (!platMatch) return false;
 
-        // Target — MUST match strictly (this is the key discriminator)
-        return arTarg === targN;
+        // Target strict
+        if (arTarg !== targN) return false;
+
+        // Campaign — strict (Retarget vs Retarget+Look-a-like are different RKs)
+        // Only skip if BOTH have campaign filled and they don't match
+        if (campN && arCamp && campN !== arCamp) {
+          // Allow partial only when one is subset of the other by both looking at commas
+          const prCampSet = new Set(campN.split(','));
+          const arCampSet = new Set(arCamp.split(','));
+          const same = prCampSet.size === arCampSet.size && [...prCampSet].every(x=>arCampSet.has(x));
+          if (!same) return false;
+        }
+
+        // Audience — strict when both present
+        if (audN && arAud && audN !== arAud) return false;
+
+        // Date overlap — actuals row date must overlap with plan row date range
+        if (prStart && prEnd) {
+          const arStart = parseRuDate(ar.startDate);
+          const arEnd   = parseRuDate(ar.endDate);
+          if (arStart && arEnd) {
+            // Overlap if not (arEnd < prStart OR arStart > prEnd)
+            if (arEnd < prStart || arStart > prEnd) return false;
+          }
+        }
+
+        return true;
       });
 
       if (matches.length) {
-        // Aggregate all weekly lines for this specific campaign
         const totalPlanLine = matches.reduce((a,m)=>a + m.budgetLine, 0);
         const totalFact     = matches.reduce((a,m)=>a + m.totalCosts, 0);
         const totalLeads    = matches.reduce((a,m)=>a + m.leadForms, 0);
 
-        // For active non-stop campaigns without proper Duration,
-        // project plan = avg daily × days elapsed
         let effectivePlan = totalPlanLine;
         if (!effectivePlan && matches[0]?.dailyBudget) {
           const now = new Date();
@@ -1546,7 +1570,6 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
           }
         }
 
-        // Backfill dates from mediaplan sheets if missing in schedule
         const startDates = matches.map(m => parseRuDate(m.startDate)).filter(Boolean);
         const endDates   = matches.map(m => parseRuDate(m.endDate)).filter(Boolean);
         const earliestStart = startDates.length ? new Date(Math.min(...startDates.map(d=>d.getTime()))) : null;
