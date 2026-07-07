@@ -1422,14 +1422,18 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
         // Helper to convert parsed value to RUB
         const toRUB = parsed => {
           if (!parsed || !parsed.value) return 0;
-          // If explicitly marked USD → convert
           if (parsed.usd) return Math.round(parsed.value * USD_TO_RUB);
-          // If explicitly marked RUB → as is
           if (parsed.rub) return parsed.value;
-          // No currency symbol → use sheet default
           return sheetCurrency === 'usd'
             ? Math.round(parsed.value * USD_TO_RUB)
             : parsed.value;
+        };
+
+        // Parse number that may contain thousand separators (e.g. "5,138" or "5 138")
+        const parseCount = s => {
+          if (!s) return 0;
+          const cleaned = String(s).replace(/[\s,\.](?=\d{3}\b)/g, '').replace(/[^\d]/g,'');
+          return parseInt(cleaned) || 0;
         };
 
         // Data starts after header row
@@ -1440,9 +1444,9 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
           if (!project) continue;
 
           const dailyBudget = toRUB(parseAmount(row[cIdx.dailyBudget]));
-          const duration    = parseInt(row[cIdx.duration]) || 0;
+          const duration    = parseInt(String(row[cIdx.duration]||'').replace(/[^\d]/g,'')) || 0;
           const totalCosts  = toRUB(parseAmount(row[cIdx.totalCosts]));
-          const leadForms   = parseInt(row[cIdx.leadForms]) || 0;
+          const leadForms   = parseCount(row[cIdx.leadForms]);
           const cpo         = toRUB(parseAmount(row[cIdx.cpo]));
 
           actualsRows.push({
@@ -1455,10 +1459,10 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
             endDate:     (row[cIdx.endDate]  || '').trim(),
             dailyBudget,
             duration,
-            budgetPlan:  dailyBudget * (duration || 1),
-            budgetFact:  totalCosts,
-            leadsFact:   leadForms,
-            cpl:         cpo,
+            budgetLine:  dailyBudget * (duration || 1),  // budget for this line
+            totalCosts,                                    // fact spend for this line
+            leadForms,                                     // fact leads for this line
+            cpo,
             _currency:   sheetCurrency,
             _source_sheet: sh.name,
             _geo:          sh.geoDefault,
@@ -1469,8 +1473,19 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
       }
     }
 
-    // ── 3. Match plan rows to actuals ──
+    // ── 3. Match plan rows to actuals — AGGREGATE all matching lines ──
+    // In mediaplan EU/RU each campaign has multiple weekly rows.
+    // We sum them up per (project + platform + target) to get campaign totals.
     const normalize = s => (s||'').toLowerCase().replace(/[\s_\-\.]/g,'').trim();
+
+    // Parse Russian date DD.MM.YYYY
+    const parseRuDate = s => {
+      if (!s) return null;
+      const m = String(s).match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      if (m) return new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
+      const d = new Date(s);
+      return isNaN(d) ? null : d;
+    };
 
     planRows = planRows.map(pr => {
       const projN = normalize(pr.project);
@@ -1478,9 +1493,8 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
       const campN = normalize(pr.campaign);
       const targN = normalize(pr.target);
 
-      // Match by project + platform + (target OR campaign)
-      // Because in EU/RU sheets campaign field is often "Retarget" but plan has "Retarget, Look-a-like"
-      const match = actualsRows.find(ar => {
+      // Find ALL matching actuals rows (weekly lines for this campaign)
+      const matches = actualsRows.filter(ar => {
         const arProj = normalize(ar.project);
         const arPlat = normalize(ar.platform);
         const arCamp = normalize(ar.campaign);
@@ -1489,24 +1503,52 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
         const projMatch = arProj && (arProj === projN || arProj.includes(projN) || projN.includes(arProj));
         if (!projMatch) return false;
 
-        // Platform matching — LinkedIn variants are same
         const bothLinkedIn = arPlat.includes('linkedin') && platN.includes('linkedin');
         const bothDirect   = (arPlat.includes('direct')||arPlat.includes('яндекс')) && (platN.includes('direct')||platN.includes('яндекс'));
         const platMatch    = arPlat === platN || bothLinkedIn || bothDirect;
         if (!platMatch) return false;
 
-        // Target matches OR campaign matches
+        // Match by target (more reliable than campaign name)
         const targMatch = arTarg && targN && (arTarg === targN || arTarg.includes(targN) || targN.includes(arTarg));
         const campMatch = arCamp && campN && (arCamp === campN || arCamp.includes(campN) || campN.includes(arCamp));
-        return targMatch || campMatch || (!arTarg && !arCamp);
+        return targMatch || campMatch;
       });
 
-      if (match) {
-        pr.budgetPlan = match.budgetPlan || pr.budgetPlan;
-        pr.budgetFact = match.budgetFact || pr.budgetFact;
-        pr.leadsFact  = match.leadsFact  || pr.leadsFact;
-        pr.cpl        = match.cpl || (pr.leadsFact > 0 ? Math.round(pr.budgetFact/pr.leadsFact) : 0);
-        pr._matched_actuals = match._source_sheet;
+      if (matches.length) {
+        // Aggregate all lines: sum budget, sum leads, average CPL
+        const totalPlan  = matches.reduce((a,m)=>a + m.budgetLine, 0);
+        const totalFact  = matches.reduce((a,m)=>a + m.totalCosts, 0);
+        const totalLeads = matches.reduce((a,m)=>a + m.leadForms, 0);
+
+        // For active RU campaigns (running non-stop), if plan is 0 because
+        // duration is not set, use start-to-today to project plan
+        let effectivePlan = totalPlan;
+        if (!effectivePlan && matches[0]?.dailyBudget) {
+          const now = new Date();
+          const startDates = matches.map(m => parseRuDate(m.startDate)).filter(Boolean);
+          const earliestStart = startDates.length ? new Date(Math.min(...startDates.map(d=>d.getTime()))) : null;
+          if (earliestStart) {
+            const daysElapsed = Math.max(1, Math.round((now - earliestStart) / 864e5));
+            const avgDaily    = matches.reduce((a,m)=>a + m.dailyBudget, 0) / matches.length;
+            effectivePlan     = Math.round(avgDaily * daysElapsed);
+          }
+        }
+
+        // Earliest start / latest end dates across all lines
+        const startDates = matches.map(m => parseRuDate(m.startDate)).filter(Boolean);
+        const endDates   = matches.map(m => parseRuDate(m.endDate)).filter(Boolean);
+        const earliestStart = startDates.length ? new Date(Math.min(...startDates.map(d=>d.getTime()))) : null;
+        const latestEnd     = endDates.length   ? new Date(Math.max(...endDates.map(d=>d.getTime())))   : null;
+
+        pr.budgetPlan = effectivePlan || pr.budgetPlan;
+        pr.budgetFact = totalFact     || pr.budgetFact;
+        pr.leadsFact  = totalLeads    || pr.leadsFact;
+        pr.cpl        = totalLeads > 0 ? Math.round(totalFact / totalLeads) : 0;
+        // Backfill dates from mediaplan sheets if not in schedule
+        if (!pr.startDate && earliestStart) pr.startDate = earliestStart;
+        if (!pr.endDate && latestEnd)       pr.endDate   = latestEnd;
+        pr._matched_actuals = matches[0]._source_sheet;
+        pr._matched_count   = matches.length;
       }
       return pr;
     });
