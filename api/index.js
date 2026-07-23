@@ -1287,6 +1287,91 @@ app.get('/api/sheets/test', async (req, res) => {
   }
 });
 
+// GET /api/kpi/performance — read monthly Performance plan/fact from separate spreadsheet
+// Source: "Marketing BGS: отчеты и планы" → sheet "План-факт 2026" → row 14 (Performance)
+app.get('/api/kpi/performance', async (req, res) => {
+  const c = getCreds();
+  const perfSheetId = process.env.CRED__SHEETS__KPI_SPREADSHEET_ID
+                   || '1WbKlMZ6xXBuzh5VYsFf8gs3cU8JUCz7oOcsjyltY49o';
+  const perfSheetName = process.env.CRED__SHEETS__KPI_SHEET_NAME || 'План-факт 2026';
+
+  try {
+    const token = await getSheetsToken(c);
+    // Fetch a wide range to capture all months (columns H through BZ approx)
+    const range = `${perfSheetName}!A1:BZ25`;
+    const r = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${perfSheetId}/values/${encodeURIComponent(range)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const d = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: d.error?.message || `HTTP ${r.status}` });
+
+    const rows = d.values || [];
+    if (rows.length < 15) return res.json({ error: 'Лист пустой или недостаточно строк' });
+
+    // Structure:
+    //  row 2 (index 2): quarter headers  (col H: "1QT 2026" ... etc.)
+    //  row 3 (index 3): month headers    ("January", "February", ...)
+    //  row 4 (index 4): sub-headers      ("План", "Факт", "%%")
+    //  row 13 (index 13): Performance row (0-indexed row 14 shown in UI is 13 here, but sheet uses 1-indexed row 14 which is arr[13])
+    // NOTE: In screenshot Performance row is row 14 (1-indexed). Zero-indexed → arr[13].
+
+    const monthRow  = rows[3] || [];
+    const headerRow = rows[4] || [];
+    const perfRow   = rows[13] || [];   // Performance
+
+    // Parse number that may contain commas, spaces, %
+    const parseNum = s => {
+      if (!s) return 0;
+      const cleaned = String(s).replace(/\s/g,'').replace('%','').replace(',','.');
+      const n = parseFloat(cleaned);
+      return isNaN(n) ? 0 : n;
+    };
+
+    // Build month → {plan, fact} mapping
+    // Iterate through columns, find where month name appears in monthRow,
+    // then check headerRow for the next 3 columns: План / Факт / %
+    const months = {};
+    const monthNames = ['january','february','march','april','may','june','july','august','september','october','november','december',
+                        'январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+    const monthMap = {january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,
+                      январь:1,февраль:2,март:3,апрель:4,май:5,июнь:6,июль:7,август:8,сентябрь:9,октябрь:10,ноябрь:11,декабрь:12};
+
+    for (let col = 0; col < monthRow.length; col++) {
+      const cell = (monthRow[col] || '').trim().toLowerCase();
+      const monthIdx = monthNames.findIndex(m => cell === m || cell.startsWith(m));
+      if (monthIdx < 0) continue;
+      const monthNum = monthMap[monthNames[monthIdx]];
+      // Find the "План" and "Факт" columns near this position
+      let planCol = -1, factCol = -1;
+      for (let offset = 0; offset < 5; offset++) {
+        const h = (headerRow[col + offset] || '').trim().toLowerCase();
+        if (h === 'план' || h === 'plan') planCol = col + offset;
+        if (h === 'факт' || h === 'fact') factCol = col + offset;
+      }
+      if (planCol < 0) planCol = col;
+      if (factCol < 0) factCol = col + 1;
+
+      months[monthNum] = {
+        month:     monthNum,
+        monthName: cell,
+        plan:      parseNum(perfRow[planCol]),
+        fact:      parseNum(perfRow[factCol]),
+        planCol, factCol,
+      };
+    }
+
+    res.json({
+      ok: true,
+      source: `${perfSheetName} → row 14 Performance`,
+      months,
+      synced_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/sheets/mediaplan — fetch and parse media plan rows
 app.get('/api/sheets/mediaplan', async (req, res) => {
   const c = getCreds();
@@ -1496,12 +1581,9 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
 
       if (!targN) return pr;
 
-      // Plan row date range (from schedule EU+RU)
       const prStart = pr.startDate ? new Date(pr.startDate) : null;
       const prEnd   = pr.endDate   ? new Date(pr.endDate)   : null;
 
-      // Find matching actuals — must match ALL: project, platform, target, campaign, audience
-      // AND date overlap with plan row's period
       const matches = actualsRows.filter(ar => {
         const arProj = normalize(ar.project);
         const arPlat = normalize(ar.platform);
@@ -1509,7 +1591,7 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
         const arCamp = normalize(ar.campaign);
         const arAud  = normalize(ar.audience);
 
-        // Project
+        // Project — must match
         const projMatch = arProj && (arProj === projN || arProj.includes(projN) || projN.includes(arProj));
         if (!projMatch) return false;
 
@@ -1527,26 +1609,31 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
         // Target strict
         if (arTarg !== targN) return false;
 
-        // Campaign — strict (Retarget vs Retarget+Look-a-like are different RKs)
-        // Only skip if BOTH have campaign filled and they don't match
-        if (campN && arCamp && campN !== arCamp) {
-          // Allow partial only when one is subset of the other by both looking at commas
-          const prCampSet = new Set(campN.split(','));
-          const arCampSet = new Set(arCamp.split(','));
-          const same = prCampSet.size === arCampSet.size && [...prCampSet].every(x=>arCampSet.has(x));
-          if (!same) return false;
+        // Campaign — check "look-a-like" flag as key discriminator
+        // "Retarget" vs "Retarget, Look-a-like" must be different
+        if (campN && arCamp) {
+          const prHasLAL = campN.includes('lookalike') || campN.includes('lookalike');
+          const arHasLAL = arCamp.includes('lookalike') || arCamp.includes('lookalike');
+          if (prHasLAL !== arHasLAL) return false;
         }
 
-        // Audience — strict when both present
-        if (audN && arAud && audN !== arAud) return false;
+        // Audience — check when both present (Non-registered vs Registered are different)
+        if (audN && arAud) {
+          const prReg = audN.includes('registered') && !audN.includes('nonregistered');
+          const arReg = arAud.includes('registered') && !arAud.includes('nonregistered');
+          if (prReg !== arReg) return false;
+        }
 
-        // Date overlap — actuals row date must overlap with plan row date range
+        // Date overlap — soft check: only skip if actuals clearly outside plan window
+        // (allow some buffer since weekly rows might be slightly before/after)
         if (prStart && prEnd) {
           const arStart = parseRuDate(ar.startDate);
           const arEnd   = parseRuDate(ar.endDate);
           if (arStart && arEnd) {
-            // Overlap if not (arEnd < prStart OR arStart > prEnd)
-            if (arEnd < prStart || arStart > prEnd) return false;
+            // Buffer of 60 days on each side to catch related weekly rows
+            const bufferedStart = new Date(prStart.getTime() - 60*864e5);
+            const bufferedEnd   = new Date(prEnd.getTime()   + 60*864e5);
+            if (arEnd < bufferedStart || arStart > bufferedEnd) return false;
           }
         }
 

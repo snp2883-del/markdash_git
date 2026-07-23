@@ -1480,6 +1480,7 @@ input:focus,select:focus,textarea:focus{
       </div>
 
       <!-- MP ALERTS PANEL -->
+      <div id="mpKpiPerf"></div>
       <div id="mpAlertsPanel"></div>
 
       <!-- PROJECT CARDS -->
@@ -2692,14 +2693,26 @@ function renderKPI(data){
     cpl:         cpl || 0,
   });
 
+  // Compute deltas vs previous period if compare mode is on
+  const compareOn = typeof comparePeriodEnabled !== 'undefined' && comparePeriodEnabled
+                 && typeof prevPeriodData !== 'undefined' && prevPeriodData.length > 0;
+  const prev = compareOn
+    ? prevPeriodData.reduce((a,r)=>({s:a.s+r.sessions,l:a.l+r.leads,c:a.c+r.conversions,sp:a.sp+r.spend,pv:a.pv+r.pageviews}),{s:0,l:0,c:0,sp:0,pv:0})
+    : null;
+  const deltaOf = (a,b,invert=false) => {
+    if(!b) return null;
+    const pct = +((a-b)/b*100).toFixed(1);
+    return { pct: Math.abs(pct), up: invert ? pct<0 : pct>0 };
+  };
+
   const kpis = [
-    {key:'sessions',    lbl:'Визиты',       val:tot.s.toLocaleString('ru'),    delta:'+8.2', up:true,  c:'#4f7fff', ico:'📈'},
-    {key:'pageviews',   lbl:'Просмотры',    val:tot.pv.toLocaleString('ru'),   delta:null,   up:null,  c:'#3dcea0', ico:'📄'},
-    {key:'leads',       lbl:'Лиды',         val:tot.l.toLocaleString('ru'),    delta:'+12.4',up:true,  c:'#a78bfa', ico:'👤'},
-    {key:'conversions', lbl:'Конверсии',    val:tot.c.toLocaleString('ru'),    delta:'+5.1', up:true,  c:'#3dcea0', ico:'🎯'},
-    {key:'spend',       lbl:'Расходы',      val:'₽'+tot.sp.toLocaleString('ru'),delta:'-3.2',up:false, c:'#f5a623', ico:'💸'},
-    {key:'cpl',         lbl:'CPL (₽)',      val:cpl !== null ? '₽'+cpl : '—', delta:null,   up:null,  c:'#ff6b4a', ico:'💡'},
-    {key:'ctr',         lbl:'Конв. %',      val:ctr+'%',                       delta:null,   up:null,  c:'#e040fb', ico:'📊'},
+    {key:'sessions',    lbl:'Визиты',       val:tot.s.toLocaleString('ru'),      d: compareOn ? deltaOf(tot.s, prev.s) : {pct:8.2, up:true},  c:'#4f7fff', ico:'📈'},
+    {key:'pageviews',   lbl:'Просмотры',    val:tot.pv.toLocaleString('ru'),     d: compareOn ? deltaOf(tot.pv,prev.pv) : null,               c:'#3dcea0', ico:'📄'},
+    {key:'leads',       lbl:'Лиды',         val:tot.l.toLocaleString('ru'),      d: compareOn ? deltaOf(tot.l, prev.l) : {pct:12.4,up:true}, c:'#a78bfa', ico:'👤'},
+    {key:'conversions', lbl:'Конверсии',    val:tot.c.toLocaleString('ru'),      d: compareOn ? deltaOf(tot.c, prev.c) : {pct:5.1, up:true}, c:'#3dcea0', ico:'🎯'},
+    {key:'spend',       lbl:'Расходы',      val:'₽'+tot.sp.toLocaleString('ru'), d: compareOn ? deltaOf(tot.sp,prev.sp,true) : {pct:3.2,up:false}, c:'#f5a623', ico:'💸'},
+    {key:'cpl',         lbl:'CPL (₽)',      val:cpl !== null ? '₽'+cpl : '—',   d: null,                                                     c:'#ff6b4a', ico:'💡'},
+    {key:'ctr',         lbl:'Конв. %',      val:ctr+'%',                        d: null,                                                     c:'#e040fb', ico:'📊'},
   ];
 
   document.getElementById('kpiGrid').innerHTML = kpis.map(k => {
@@ -2709,14 +2722,15 @@ function renderKPI(data){
       ? `<div class="kpi-alert-badge ${alertLvl}" title="${alertTip}">⚠</div>
          <div class="kpi-alert-tip">${alertTip}</div>`
       : '';
+    const deltaHtml = k.d
+      ? `<div class="kpi-delta ${k.d.up?'up':'dn'}">${k.d.up?'↑':'↓'} ${k.d.pct}% к пред.</div>`
+      : '<div style="height:17px"></div>';
     return `<div class="kpi ${alertLvl ? 'alert-'+alertLvl : ''}" style="--kc:${k.c}"
       onclick="openDrill('kpi','${k.key}','${k.lbl}','${k.ico}','${k.c}')">
       ${alertBadge}
       <div class="kpi-lbl">${k.lbl}</div>
       <div class="kpi-val">${k.val}</div>
-      ${k.delta !== null
-        ? `<div class="kpi-delta ${k.up?'up':'dn'}">${k.up?'↑':'↓'} ${Math.abs(k.delta)}% к пред.</div>`
-        : '<div style="height:17px"></div>'}
+      ${deltaHtml}
       <div class="kpi-ico">${k.ico}</div>
       <div class="kpi-drill-hint">↗ детализация</div>
     </div>`;
@@ -2729,22 +2743,60 @@ function renderTraffic(data){
   const metric=document.getElementById('metricSel').value;
   const byDate=aggByDateMetric(data,metric);
   const labels=Object.keys(byDate);
-  document.getElementById('trsub').textContent=labels.length?`${labels[0]} — ${labels[labels.length-1]}`:'';
-  const visibleCh=activeCh.has('ALL')?CHANNELS:CHANNELS.filter(c=>activeCh.has(c));
-  document.getElementById('trleg').innerHTML=visibleCh.map((ch,i)=>{
+  document.getElementById('trsub').textContent = labels.length ? `${labels[0]} — ${labels[labels.length-1]}` : '';
+  const visibleCh=activeCh.has('ALL') ? CHANNELS : CHANNELS.filter(c=>activeCh.has(c));
+  document.getElementById('trleg').innerHTML = visibleCh.map((ch,i)=>{
     const idx=CHANNELS.indexOf(ch);
-    return`<span class="leg"><span class="leg-dot" style="background:${PALETTE[idx]}"></span>${ch}</span>`;
-  }).join('');
+    return `<span class="leg"><span class="leg-dot" style="background:${PALETTE[idx]}"></span>${ch}</span>`;
+  }).join('')
+  + ((typeof comparePeriodEnabled!=='undefined' && comparePeriodEnabled) ? '<span class="compare-badge">▪ Предыдущий период</span>' : '')
+  + ((typeof forecastEnabled!=='undefined'      && forecastEnabled)      ? '<span class="forecast-badge">⟶ Прогноз</span>'         : '');
+
+  const labelsWithForecast=[...labels];
+  const datasets = visibleCh.map(ch => {
+    const idx  = CHANNELS.indexOf(ch);
+    const vals = labels.map(d => byDate[d][ch] || 0);
+    const ds = { label:ch, data:[...vals], borderColor:PALETTE[idx], backgroundColor:PALETTE[idx]+'18', borderWidth:2, pointRadius:2, tension:.4, fill:false };
+    // Forecast
+    if(typeof forecastEnabled!=='undefined' && forecastEnabled && vals.length >= 3 && typeof buildForecastDataset==='function'){
+      const fc = buildForecastDataset(labelsWithForecast, vals, PALETTE[idx]);
+      if(fc){ ds.data = fc.data; ds.tension = .2; }
+    }
+    return ds;
+  });
+
+  // Previous period compare (dashed lines)
+  if(typeof comparePeriodEnabled!=='undefined' && comparePeriodEnabled && typeof prevPeriodData!=='undefined' && prevPeriodData.length){
+    const prevByDate = aggByDateMetric(prevPeriodData, metric);
+    const prevLabels = Object.keys(prevByDate);
+    visibleCh.forEach(ch=>{
+      const idx = CHANNELS.indexOf(ch);
+      datasets.push({
+        label: ch+' (пред.)',
+        data: prevLabels.map(d => prevByDate[d][ch] || 0),
+        borderColor: PALETTE[idx]+'66',
+        borderDash: [4, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: .4,
+        fill: false,
+      });
+    });
+  }
+
+  const finalLabels = (typeof forecastEnabled!=='undefined' && forecastEnabled) ? labelsWithForecast : labels;
   mkChart('trafficChart',{
     type:'line',
-    data:{labels,datasets:visibleCh.map(ch=>{
-      const idx=CHANNELS.indexOf(ch);
-      return{label:ch,data:labels.map(d=>byDate[d][ch]||0),borderColor:PALETTE[idx],backgroundColor:PALETTE[idx]+'18',borderWidth:2,pointRadius:2,tension:.4,fill:false};
-    })},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    data:{labels: finalLabels, datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#555',font:{size:11},maxTicksLimit:10},grid:{color:'rgba(255,255,255,.04)'}},
-              y:{ticks:{color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'}}}}
+      scales:{
+        x:{ticks:{color:'#555',font:{size:11},maxTicksLimit:12},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{ticks:{color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'}}
+      }
+    }
   });
 }
 
@@ -4123,6 +4175,8 @@ function initMediaplan(){
   }
   populateMpFilters();
   renderMediaplan();
+  // Load monthly KPI performance from external spreadsheet
+  loadKpiPerformance().then(() => renderMediaplan());
 }
 
 function saveMpDB(){ lsSet('mediaplan_db', mediaplanDB); }
@@ -4215,6 +4269,54 @@ function getMpFiltered(){
 }
 
 // ── main render ───────────────────────────────────────
+// Cache for monthly KPI plan/fact from external spreadsheet
+let kpiPerformance = null;
+
+async function loadKpiPerformance(){
+  if(!HAS_BACKEND) return null;
+  try{
+    const d = await backendGet('/api/kpi/performance');
+    if(d.ok) kpiPerformance = d;
+    return kpiPerformance;
+  }catch(e){
+    console.warn('KPI performance load failed:', e.message);
+    return null;
+  }
+}
+
+function getCurrentMonthKpi(){
+  if(!kpiPerformance?.months) return null;
+  const m = (new Date()).getMonth() + 1;
+  return kpiPerformance.months[m] || null;
+}
+
+// Get manually-entered leads for a mediaplan row (persistent in localStorage)
+function getManualLeads(rowId){
+  const manual = lsGet('mp_manual_leads') || {};
+  return manual[rowId] || 0;
+}
+function setManualLeads(rowId, count){
+  const manual = lsGet('mp_manual_leads') || {};
+  manual[rowId] = parseInt(count) || 0;
+  lsSet('mp_manual_leads', manual);
+}
+
+// Called when user edits leadsFact inline in table
+function editLeadsFact(rowId, newVal){
+  const n = Math.max(0, parseInt(newVal) || 0);
+  const row = mediaplanDB.find(r => r.id === rowId);
+  if(!row) return;
+  // Save as manual override (added to sheet-parsed leads)
+  setManualLeads(rowId, n);
+  // Recompute total: base from sheets + manual
+  row._sheetLeadsFact = row._sheetLeadsFact !== undefined ? row._sheetLeadsFact : row.leadsFact;
+  row.leadsFact = (row._sheetLeadsFact || 0) + n;
+  row.cpl = row.leadsFact > 0 ? Math.round(row.budgetFact / row.leadsFact) : 0;
+  saveMpDB();
+  renderMediaplan();
+  showToast(`Лиды факт сохранены: +${n} к базе (${row._sheetLeadsFact || 0})`, 'success');
+}
+
 function renderMediaplan(){
   const view = document.getElementById('mpView')?.value || 'table';
   document.getElementById('mpTableView').style.display  = view==='table' ? '' : 'none';
@@ -4223,12 +4325,56 @@ function renderMediaplan(){
 
   renderMpProjects();
   renderMpPva();
+  renderMpKpiPerformance();  // NEW: monthly plan/fact from external sheet
   if(view==='table') renderMpTable();
   if(view==='gantt') renderMpGantt();
   if(view==='pivot') renderMpPivot();
   updateMpSubtitle();
-  // Alerts — called directly here (no hook, to avoid hoisting recursion)
   renderMpAlerts();
+}
+
+function renderMpKpiPerformance(){
+  const panel = document.getElementById('mpKpiPerf');
+  if(!panel) return;
+  if(!kpiPerformance?.months){
+    panel.innerHTML = '';
+    return;
+  }
+  const cur = getCurrentMonthKpi();
+  const monthNames = ['','январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+
+  // Sum leadsFact from active mediaplan rows (this is what dashboard sees)
+  const dashActiveFact = mediaplanDB
+    .filter(r => r.status === 'active')
+    .reduce((a,r) => a + (r.leadsFact || 0), 0);
+
+  if(!cur){
+    panel.innerHTML = `<div style="padding:12px;background:var(--surface2);border-radius:6px;font-size:12px;color:var(--muted)">
+      План/факт лидов на этот месяц не найден в KPI-таблице</div>`;
+    return;
+  }
+
+  const pct = cur.plan > 0 ? Math.round(cur.fact/cur.plan*100) : 0;
+  const dashPct = cur.plan > 0 ? Math.round(dashActiveFact/cur.plan*100) : 0;
+
+  panel.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:1rem">
+      <div style="padding:12px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent2)">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">ПЛАН ЛИДОВ · ${monthNames[cur.month]}</div>
+        <div style="font-family:var(--fh);font-size:22px;font-weight:700;margin-top:4px">${cur.plan}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">из «План-факт 2026» · строка Performance</div>
+      </div>
+      <div style="padding:12px;background:var(--surface2);border-radius:6px;border-left:3px solid ${pct>=100?'#3dcea0':pct>=70?'#f0a500':'#ff6b4a'}">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">ФАКТ ЛИДОВ (из таблицы)</div>
+        <div style="font-family:var(--fh);font-size:22px;font-weight:700;margin-top:4px">${cur.fact} <span style="font-size:13px;color:var(--muted)">(${pct}%)</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Perf-строка · Факт колонка</div>
+      </div>
+      <div style="padding:12px;background:var(--surface2);border-radius:6px;border-left:3px solid ${dashPct>=100?'#3dcea0':dashPct>=70?'#f0a500':'#ff6b4a'}">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">ФАКТ ИЗ АКТИВНЫХ РК</div>
+        <div style="font-family:var(--fh);font-size:22px;font-weight:700;margin-top:4px">${dashActiveFact} <span style="font-size:13px;color:var(--muted)">(${dashPct}%)</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Сумма лидов активных кампаний</div>
+      </div>
+    </div>`;
 }
 
 // ── project cards ─────────────────────────────────────
@@ -4387,7 +4533,18 @@ function renderMpTable(){
       </td>
       <td><span class="mp-pct-chip ${bPct>=100?'ok':bPct>=70?'warn':'over'}">${bPct}%</span></td>
       <td style="font-variant-numeric:tabular-nums">${r.leadsPlan}</td>
-      <td style="font-variant-numeric:tabular-nums">${r.leadsFact}
+      <td style="font-variant-numeric:tabular-nums">
+        ${r.status === 'active'
+          ? `<span style="display:inline-flex;align-items:center;gap:4px">
+               <span contenteditable="true"
+                     style="border-bottom:1px dashed var(--accent2);padding:0 3px;min-width:20px;display:inline-block;cursor:text"
+                     onblur="editLeadsFact('${r.id}', this.textContent)"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+                     title="Клик — редактировать лиды факт (добавит к базе из Sheets)">${getManualLeads(r.id) || 0}</span>
+               <span style="font-size:10px;color:var(--muted)">+${r._sheetLeadsFact !== undefined ? r._sheetLeadsFact : (r.leadsFact - getManualLeads(r.id))}</span>
+               = <strong>${r.leadsFact}</strong>
+             </span>`
+          : `${r.leadsFact}`}
         <span style="font-size:10px;color:${lPct>=100?'#3dcea0':lPct>=70?'#f0a500':'#ff6b4a'}"> ${lPct}%</span>
       </td>
       <td style="font-variant-numeric:tabular-nums">${r.cpl>0?'₽'+r.cpl:'—'}</td>
@@ -4735,6 +4892,16 @@ async function mpSyncSheets(){
       showToast('Google Sheets: все строки пустые после фильтрации','error');
       return;
     }
+
+    // Preserve base sheet leads (before manual additions) and add manual on top
+    cleanRows.forEach(r => {
+      r._sheetLeadsFact = r.leadsFact || 0;
+      const manual = getManualLeads(r.id);
+      if(manual > 0){
+        r.leadsFact = r._sheetLeadsFact + manual;
+        r.cpl = r.leadsFact > 0 ? Math.round(r.budgetFact / r.leadsFact) : 0;
+      }
+    });
 
     // Full replace from Sheets — keep ONLY rows manually added via modal
     // (their ID starts with 'MP' prefix from openMpModal → saveMpRow)
@@ -5900,7 +6067,11 @@ function navTo(id, el){
   if(id==='leads')       renderLeads();
   if(id==='campaigns')   { if(!campaignsDB.length) initCampaigns(); renderCampaigns(); }
   if(id==='leads-table'){ if(!leadsDB.length) initLeadsTable(); else ltFilter(); }
-  if(id==='mediaplan')  { if(!mediaplanDB.length) initMediaplan(); else renderMediaplan(); setTimeout(mpAutoSyncIfConfigured, 500); }
+  if(id==='mediaplan')  {
+    if(!mediaplanDB.length) initMediaplan();
+    else { renderMediaplan(); loadKpiPerformance().then(() => renderMediaplan()); }
+    setTimeout(mpAutoSyncIfConfigured, 500);
+  }
   if(id==='settings')    buildAlertTable();
 
   // Sync bottom nav
@@ -6288,121 +6459,8 @@ function renderMpAlerts(){
 
 // renderMpAlerts вызывается напрямую внутри renderMediaplan (убран хук из-за hoisting-рекурсии)
 
-// ── HOOK: renderTraffic adds compare + forecast lines ─
-const _origRenderTraffic = renderTraffic;
-function renderTraffic(data){
-  const metric  = document.getElementById('metricSel').value;
-  const byDate  = aggByDateMetric(data, metric);
-  const labels  = Object.keys(byDate);
-  document.getElementById('trsub').textContent = labels.length ? `${labels[0]} — ${labels[labels.length-1]}` : '';
-  const visibleCh = activeCh.has('ALL') ? CHANNELS : CHANNELS.filter(c=>activeCh.has(c));
-  document.getElementById('trleg').innerHTML = visibleCh.map((ch,i)=>{
-    const idx=CHANNELS.indexOf(ch);
-    return `<span class="leg"><span class="leg-dot" style="background:${PALETTE[idx]}"></span>${ch}</span>`;
-  }).join('')
-  + (comparePeriodEnabled ? '<span class="compare-badge">▪ Предыдущий период</span>' : '')
-  + (forecastEnabled      ? '<span class="forecast-badge">⟶ Прогноз</span>'         : '');
+// renderTraffic и renderKPI больше не переопределяются — логика compare+forecast встроена в оригиналы
 
-  const labelsWithForecast = [...labels];
-  const datasets = visibleCh.map(ch => {
-    const idx  = CHANNELS.indexOf(ch);
-    const vals = labels.map(d => byDate[d][ch] || 0);
-    const ds   = { label:ch, data:[...vals], borderColor:PALETTE[idx], backgroundColor:PALETTE[idx]+'18', borderWidth:2, pointRadius:2, tension:forecastEnabled?.2:.4, fill:false };
-
-    // Forecast
-    if(forecastEnabled && vals.length >= 3){
-      const fc = buildForecastDataset(labelsWithForecast, vals, PALETTE[idx]);
-      if(fc){ ds.data = fc.data; }
-    }
-    return ds;
-  });
-
-  // Previous period compare datasets (dashed)
-  if(comparePeriodEnabled && prevPeriodData.length){
-    const prevByDate = aggByDateMetric(prevPeriodData, metric);
-    const prevLabels = Object.keys(prevByDate);
-    visibleCh.forEach((ch,i)=>{
-      const idx = CHANNELS.indexOf(ch);
-      datasets.push({
-        label: ch+' (пред.)',
-        data: prevLabels.map(d => prevByDate[d][ch] || 0),
-        borderColor: PALETTE[idx]+'66',
-        borderDash: [4, 4],
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: .4,
-        fill: false,
-      });
-    });
-  }
-
-  // Use merged labels for forecast
-  const finalLabels = forecastEnabled ? labelsWithForecast : labels;
-  mkChart('trafficChart',{
-    type:'line',
-    data:{ labels: finalLabels, datasets },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{legend:{display:false},tooltip:{callbacks:{
-        title: ctx => ctx[0]?.label?.startsWith('прогноз') ? 'Прогноз' : ctx[0]?.label,
-      }}},
-      scales:{
-        x:{ticks:{color:'#555',font:{size:11},maxTicksLimit:12},grid:{color:'rgba(255,255,255,.04)'}},
-        y:{ticks:{color:'#555',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'}},
-      }
-    }
-  });
-}
-
-// ── HOOK: renderKPI shows real deltas with prev period ─
-const _origRenderKPI = renderKPI;
-function renderKPI(data){
-  if(!comparePeriodEnabled || !prevPeriodData.length){
-    return _origRenderKPI(data);
-  }
-  // Compute current totals
-  const cur  = data.reduce((a,r)=>({s:a.s+r.sessions,l:a.l+r.leads,c:a.c+r.conversions,sp:a.sp+r.spend,pv:a.pv+r.pageviews,br:a.br+r.bounceRate}),{s:0,l:0,c:0,sp:0,pv:0,br:0});
-  const prev = prevPeriodData.reduce((a,r)=>({s:a.s+r.sessions,l:a.l+r.leads,c:a.c+r.conversions,sp:a.sp+r.spend,pv:a.pv+r.pageviews}),{s:0,l:0,c:0,sp:0,pv:0});
-  const n    = data.length || 1;
-  const ctr  = +(cur.c/Math.max(cur.s,1)*100).toFixed(2);
-  const cpl  = cur.l > 0 ? Math.round(cur.sp/cur.l) : null;
-  const avgBr= +(cur.br/n).toFixed(1);
-  const delta= (a,b,invert=false) => {
-    if(!b) return null;
-    const pct = +((a-b)/b*100).toFixed(1);
-    return { pct: Math.abs(pct), up: invert ? pct<0 : pct>0 };
-  };
-
-  evaluateAlerts({ sessions:cur.s, leads:cur.l, conversions:cur.c, ctr, spend:cur.sp, bounceRate:avgBr, cpl:cpl||0 });
-
-  const kpis=[
-    {key:'sessions',    lbl:'Визиты',    val:cur.s.toLocaleString('ru'),      d:delta(cur.s,prev.s),   c:'#4f7fff',ico:'📈'},
-    {key:'pageviews',   lbl:'Просмотры', val:cur.pv.toLocaleString('ru'),     d:delta(cur.pv,prev.pv), c:'#3dcea0',ico:'📄'},
-    {key:'leads',       lbl:'Лиды',      val:cur.l.toLocaleString('ru'),      d:delta(cur.l,prev.l),   c:'#a78bfa',ico:'👤'},
-    {key:'conversions', lbl:'Конверсии', val:cur.c.toLocaleString('ru'),      d:delta(cur.c,prev.c),   c:'#3dcea0',ico:'🎯'},
-    {key:'spend',       lbl:'Расходы',   val:'₽'+cur.sp.toLocaleString('ru'), d:delta(cur.sp,prev.sp,true),c:'#f5a623',ico:'💸'},
-    {key:'cpl',         lbl:'CPL (₽)',   val:cpl!==null?'₽'+cpl:'—',         d:null,                  c:'#ff6b4a',ico:'💡'},
-    {key:'ctr',         lbl:'Конв. %',   val:ctr+'%',                         d:null,                  c:'#e040fb',ico:'📊'},
-  ];
-
-  document.getElementById('kpiGrid').innerHTML = kpis.map(k=>{
-    const alertLvl  = getAlertLevelForKey(k.key);
-    const alertTip  = getAlertTip(k.key);
-    const alertBadge = alertLvl ? `<div class="kpi-alert-badge ${alertLvl}" title="${alertTip}">⚠</div><div class="kpi-alert-tip">${alertTip}</div>` : '';
-    const deltaHtml  = k.d ? `<div class="kpi-delta ${k.d.up?'up':'dn'}">${k.d.up?'↑':'↓'} ${k.d.pct}% к пред.</div>` : '<div style="height:17px"></div>';
-    return `<div class="kpi ${alertLvl?'alert-'+alertLvl:''}" style="--kc:${k.c}"
-      onclick="openDrill('kpi','${k.key}','${k.lbl}','${k.ico}','${k.c}')">
-      ${alertBadge}
-      <div class="kpi-lbl">${k.lbl}</div>
-      <div class="kpi-val">${k.val}</div>
-      ${deltaHtml}
-      <div class="kpi-ico">${k.ico}</div>
-      <div class="kpi-drill-hint">↗ детализация</div>
-    </div>`;
-  }).join('');
-  renderAlertPanel();
-}
 
 // ── INIT ─────────────────────────────────────────────
 // Load saved settings for compare/forecast/auto-refresh
