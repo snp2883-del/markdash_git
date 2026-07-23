@@ -1609,12 +1609,17 @@ app.get('/api/sheets/mediaplan', async (req, res) => {
         // Target strict
         if (arTarg !== targN) return false;
 
-        // Campaign — check "look-a-like" flag as key discriminator
-        // "Retarget" vs "Retarget, Look-a-like" must be different
-        if (campN && arCamp) {
-          const prHasLAL = campN.includes('lookalike') || campN.includes('lookalike');
-          const arHasLAL = arCamp.includes('lookalike') || arCamp.includes('lookalike');
-          if (prHasLAL !== arHasLAL) return false;
+        // Campaign — soft match: skip only if BOTH have completely different words
+        // (Retarget in mediaplan sheets often means the whole audience segment even
+        //  when plan says "Retarget, Look-a-like")
+        // Only reject when one has clearly a different base like "Base" vs "Retarget"
+        if (campN && arCamp && campN !== arCamp) {
+          const prWords = new Set(campN.split(',').map(w=>w.trim()).filter(Boolean));
+          const arWords = new Set(arCamp.split(',').map(w=>w.trim()).filter(Boolean));
+          // Reject only if there's no overlap at all
+          const overlap = [...prWords].some(w => arWords.has(w))
+                       || [...arWords].some(w => prWords.has(w));
+          if (!overlap) return false;
         }
 
         // Audience — check when both present (Non-registered vs Registered are different)
